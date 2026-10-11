@@ -219,7 +219,11 @@ async def close_picks(bot: Longshot, parlay: Parlay, now: datetime, *, force: bo
 
 
 async def recap(bot: Longshot, season: int, week: int, card: str, *, force: bool = False) -> bool:
-    """Once every leg is settled: post the result and record any payout."""
+    """Once every leg is settled: record the result, and post it unless the parlay lost.
+
+    A lost parlay was already announced as dead when its first leg missed, and
+    nothing more is posted about it. /slip still shows how it finished.
+    """
     row = await bot.db.parlay(season, week, card)
     if row is None or not row["closed_at"]:
         return False
@@ -235,10 +239,13 @@ async def recap(bot: Longshot, season: int, week: int, card: str, *, force: bool
         await bot.db.update_parlay(season, week, card, result=VOID, recap_at=now)
         return False
 
+    if status == LOST:
+        await bot.db.update_parlay(season, week, card, result=LOST, payout=None, recap_at=now)
+        return True
+
     title = card_title(week, card)
     stake = row["stake"] or await bot.settings.stake()
     hits = sum(1 for pick in picks if pick["status"] == WON)
-    misses = [pick for pick in picks if pick["status"] == LOST]
     payout = None
     if status == WON:
         guess = render.estimate(picks, stake)
@@ -250,12 +257,6 @@ async def recap(bot: Longshot, season: int, week: int, card: str, *, force: bool
             + (f" at {format_american(row['placed_odds'])}" if row["placed_odds"] else " (estimated; `/placed` was never run)")
             + f". Split {winners} ways, that is **{format_money(round(payout / winners, 2))}** each."
         )
-    elif status == LOST:
-        headline = f"**{title} parlay: missed.** {hits} of {len(picks)} legs hit."
-        if len(misses) == 1:
-            headline += f" It would have cashed without {render.mention(misses[0]['discord_id'])}'s leg."
-        else:
-            headline += f" {len(misses)} legs missed."
     elif status == VOID:
         headline = f"**{title} parlay: void.** Every leg was a push or void, so the stake comes back."
         payout = stake

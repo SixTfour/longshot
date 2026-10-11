@@ -194,25 +194,82 @@ def test_a_missed_leg_kills_the_parlay(tmp_path, monkeypatch):
         channel.clear()
         world.espn.set(TNF, state="post", home=21, away=20)  # Denver wins by 1: does not cover 2.5
         await at(THU_LATE)
-        assert channel.texts[0] == "❌ **Leg missed** · <@2> · DEN -2.5 (-110)"
-        assert channel.texts[1] == "💀 **The Week 6 parlay is dead.** <@2>'s leg missed: DEN -2.5 (-110)."
-        assert "**Parlay: dead.** 1 leg missed, 0 hit, 2 still to play." in channel.texts[2]
+        # The miss and the death are announced. There is no slate update for a dead parlay.
+        assert channel.texts == [
+            "❌ **Leg missed** · <@2> · DEN -2.5 (-110)",
+            "💀 **The Week 6 parlay is dead.** <@2>'s leg missed: DEN -2.5 (-110).",
+        ]
         killer = (await world.week())["killer_pick_id"]
         assert (await world.bot.db.pick(killer))["discord_id"] == 2
 
+        # From here on the channel hears nothing about it: not the other legs, not the slates, not a recap.
+        channel.clear()
+        world.espn.set(BUCS_GAME, state="in", home=14, away=10)
+        await at(SUN_EARLY_LIVE)
+        world.espn.set(BUCS_GAME, state="post", home=24, away=16)
+        await at(SUN_EARLY_DONE)
+        world.espn.finish_everything()
+        await at(et(2026, 10, 20, 9, 0))
+        assert channel.sent == []
+
+        # The other legs were still graded, so the stats are complete, and the result is on record.
+        assert await world.statuses() == {1: "won", 2: "lost", 3: "won"}
+        week = await world.week()
+        assert (week["result"], week["payout"], bool(week["recap_at"])) == ("lost", None, True)
+
+    play(tmp_path, monkeypatch, scenario)
+
+
+def test_a_second_miss_on_a_dead_parlay_is_silent(tmp_path, monkeypatch):
+    async def scenario(world, at):
+        channel = world.channel
+        await at(TUE_ANNOUNCE)
+        await at(TUE_NOON, tick=False)
+        await world.pick(1, f"p:{IRVING}", "player_rush_yds", "over:174.5")  # 175+; he finishes with 165
+        await world.pick(2, *DEN_SPREAD)
+        await at(THU_DEADLINE)
+
+        world.espn.set(TNF, state="post", home=21, away=20)
+        await at(THU_LATE)
         channel.clear()
         world.espn.set(BUCS_GAME, state="post", home=24, away=16)
         await at(SUN_EARLY_DONE)
-        recap = channel.last()
-        assert "Week 6 parlay: missed" in recap and "2 of 3 legs hit" in recap
-        assert "would have cashed without <@2>'s leg" in recap
-        week = await world.week()
-        assert (week["result"], week["payout"]) == ("lost", None)
+        assert channel.sent == []
+        assert await world.statuses() == {1: "lost", 2: "lost"}
+        # The first miss stays on record as the one that killed it.
+        killer = (await world.week())["killer_pick_id"]
+        assert (await world.bot.db.pick(killer))["discord_id"] == 2
 
-        # The commissioner overturns the miss: the kill is withdrawn.
-        await world.bot.db.grade_pick(killer, "won", None, "Settled by the commissioner", "99")
+    play(tmp_path, monkeypatch, scenario)
+
+
+def test_overturning_the_miss_brings_the_parlay_back(tmp_path, monkeypatch):
+    async def scenario(world, at):
+        channel, db = world.channel, world.bot.db
+        await at(TUE_ANNOUNCE)
+        await at(TUE_NOON, tick=False)
+        await world.pick(1, *IRVING_150)
+        await world.pick(2, *DEN_SPREAD)
+        await at(THU_DEADLINE)
+        world.espn.set(TNF, state="post", home=21, away=20)
+        await at(THU_LATE)
+        killer = (await world.week())["killer_pick_id"]
+
+        # What /grade does when the commissioner rules the leg a winner after all.
+        channel.clear()
+        await db.grade_pick(killer, "won", None, "Settled by the commissioner", "99")
         await tracking.announce_grades(world.bot, SEASON, WEEK, MAIN, [killer])
+        assert channel.texts == [
+            "✅ **Leg hit** · <@2> · DEN -2.5 (-110)\n🟢 **The Week 6 parlay is alive again.**"
+        ]
         assert (await world.week())["killer_pick_id"] is None
+
+        # Updates resume, and it can still cash.
+        channel.clear()
+        world.espn.set(BUCS_GAME, state="post", home=24, away=16)
+        await at(SUN_EARLY_DONE)
+        assert channel.texts[0].startswith("✅ **Leg hit** · <@1>")
+        assert "THE WEEK 6 PARLAY HIT" in channel.last()
 
     play(tmp_path, monkeypatch, scenario)
 

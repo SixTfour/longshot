@@ -1,4 +1,9 @@
-"""Live leg tracking: grade legs as games play out, and post an update after each slate."""
+"""Live leg tracking: grade legs as games play out, and post an update after each slate.
+
+A parlay is dead as soon as one leg misses. That miss is announced, and after
+it nothing more is posted about the parlay: its other legs are still graded,
+so the stats stay complete, but silently.
+"""
 
 from __future__ import annotations
 
@@ -142,54 +147,73 @@ async def track_week(bot: Longshot, season: int, week: int) -> None:
         await post_slates(bot, season, week, card, card_games.get(card, []))
 
 
+def _first_miss(lost: list[Pick]) -> Pick:
+    return min(lost, key=lambda pick: (pick["graded_at"] or "", pick["kickoff"], pick["id"]))
+
+
 async def announce_grades(bot: Longshot, season: int, week: int, card: str, pick_ids: list[int]) -> None:
-    """Post newly settled legs, and name the leg that killed the parlay the first time one misses."""
-    channel = await bot.league_channel()
-    picks = {pick["id"]: pick for pick in await bot.db.parlay_picks(season, week, card)}
-    fresh = [picks[pick_id] for pick_id in pick_ids if pick_id in picks]
+    """Post newly settled legs while the parlay is alive, and announce the miss that kills it.
 
-    if fresh and channel is not None:
-        lines = []
-        for pick in fresh:
-            note = render.outcome(pick)
-            tail = f" · *{note}*" if note and pick["status"] != REVIEW else ""
-            lines.append(
-                f"{render.EMOJI[pick['status']]} **{_HEADLINE[pick['status']]}** · "
-                f"{render.mention(pick['discord_id'])} · {render.leg(pick)}{tail}"
-            )
-        if any(pick["status"] == REVIEW for pick in fresh):
-            lines.append("Commissioner: settle the ❓ legs with `/grade`.")
-        await channel.send("\n".join(lines), allowed_mentions=render.QUIET)
-
+    Called after legs are graded, by the tracker or by the commissioner's /grade.
+    """
     row = await bot.db.parlay(season, week, card)
     if row is None:
         return
+    channel = await bot.league_channel()
+    title = card_title(week, card)
+    picks = {pick["id"]: pick for pick in await bot.db.parlay_picks(season, week, card)}
+    fresh = [picks[pick_id] for pick_id in pick_ids if pick_id in picks]
     lost = [pick for pick in picks.values() if pick["status"] == LOST]
-    killer = picks.get(row["killer_pick_id"]) if row["killer_pick_id"] else None
-    if killer is not None and killer["status"] == LOST:
+    was_dead = row["killer_pick_id"] is not None
+
+    if was_dead and lost:
+        # Dead before and still dead: nothing goes to the channel.
+        killer = picks.get(row["killer_pick_id"])
+        if killer is None or killer["status"] != LOST:
+            await bot.db.update_parlay(season, week, card, killer_pick_id=_first_miss(lost)["id"])
+        unruled = [pick for pick in fresh if pick["status"] == REVIEW]
+        if unruled:
+            # The parlay is over, but the leg still needs settling for the stats.
+            legs = "; ".join(f"{render.mention(pick['discord_id'])}: {render.leg(pick)}" for pick in unruled)
+            await bot.tell_commissioner(
+                f"The {title} parlay is already dead, but I could not grade a leg. Settle it with `/grade` so "
+                f"the stats are right: {legs}"
+            )
         return
-    if not lost:
-        if row["killer_pick_id"]:
-            await bot.db.update_parlay(season, week, card, killer_pick_id=None)  # the miss was overturned
-        return
-    first = min(lost, key=lambda pick: (pick["graded_at"] or "", pick["kickoff"], pick["id"]))
-    await bot.db.update_parlay(season, week, card, killer_pick_id=first["id"])
-    if channel is not None:
-        await channel.send(
-            f"💀 **The {card_title(week, card)} parlay is dead.** {render.mention(first['discord_id'])}'s leg "
-            f"missed: {render.leg(first)}.",
-            allowed_mentions=render.PING_USERS,
+
+    lines = []
+    for pick in fresh:
+        note = render.outcome(pick)
+        tail = f" · *{note}*" if note and pick["status"] != REVIEW else ""
+        lines.append(
+            f"{render.EMOJI[pick['status']]} **{_HEADLINE[pick['status']]}** · "
+            f"{render.mention(pick['discord_id'])} · {render.leg(pick)}{tail}"
         )
+    if any(pick["status"] == REVIEW for pick in fresh):
+        lines.append("Commissioner: settle the ❓ legs with `/grade`.")
+    if was_dead:
+        # The miss that killed it was overturned and no other leg has missed.
+        await bot.db.update_parlay(season, week, card, killer_pick_id=None)
+        lines.append(f"🟢 **The {title} parlay is alive again.**")
+    if lines and channel is not None:
+        await channel.send("\n".join(lines), allowed_mentions=render.QUIET)
+
+    if lost:
+        first = _first_miss(lost)
+        await bot.db.update_parlay(season, week, card, killer_pick_id=first["id"])
+        if channel is not None:
+            await channel.send(
+                f"💀 **The {title} parlay is dead.** {render.mention(first['discord_id'])}'s leg missed: "
+                f"{render.leg(first)}.",
+                allowed_mentions=render.PING_USERS,
+            )
 
 
 def _standing(picks: list[Pick]) -> str:
+    """Where a live parlay stands. Only ever shown while no leg has missed."""
     live = [pick for pick in picks if pick["status"] not in DROPPED]
     hits = sum(1 for pick in live if pick["status"] == WON)
-    misses = sum(1 for pick in live if pick["status"] == LOST)
     to_go = sum(1 for pick in live if pick["status"] in UNSETTLED)
-    if misses:
-        legs = "leg" if misses == 1 else "legs"
-        return f"💀 **Parlay: dead.** {misses} {legs} missed, {hits} hit, {to_go} still to play."
     return f"🟢 **Parlay: alive.** {hits} of {len(live)} legs in, {to_go} to go."
 
 
@@ -208,8 +232,9 @@ def _up_next(picks: list[Pick], slates: list[Slate], after: Slate) -> str | None
 async def post_slates(bot: Longshot, season: int, week: int, card: str, games: list[Game]) -> None:
     """After a slate's last game ends, post how its legs did and where the parlay stands.
 
-    games are the parlay's own games, with live state. Slates with no legs are
-    skipped, and so is the parlay's last one: the recap covers it.
+    games are the parlay's own games, with live state. Nothing is posted for a
+    slate with no legs, for the parlay's last slate (the recap covers it), or
+    once the parlay is dead.
     """
     row = await bot.db.parlay(season, week, card)
     if row is None:
@@ -228,7 +253,8 @@ async def post_slates(bot: Longshot, season: int, week: int, card: str, games: l
         changed = True
         legs = [pick for pick in picks if pick["espn_event_id"] in slate.game_ids]
         still_open = any(pick["status"] in UNSETTLED for pick in picks)
-        if not legs or not still_open or channel is None:
+        dead = any(pick["status"] == LOST for pick in picks)
+        if not legs or not still_open or dead or channel is None:
             continue
         lines = [f"### {slate.name} slate · {card_title(week, card)}"]
         lines += [render.slip_line(pick) for pick in legs]

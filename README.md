@@ -15,9 +15,11 @@ It never places a bet or moves money. The commissioner still places the parlay a
 | 24, 7 and 2 hours before the deadline | Members without a pick are pinged in the channel and by DM. |
 | Deadline (Saturday 9:00 PM by default) | Picks close and the slip is posted. Anyone without a pick is named; no bet is chosen for them. |
 | After that | The commissioner places the parlay and records the real odds with `/placed`. |
-| During games | Each leg is posted as it is settled. The first miss is called out as the parlay killer. |
-| After each slate | A summary of that slate's legs, whether the parlay is alive, and what is next. |
-| After the last leg | The result, and the payout split if it hit. |
+| During games | Each leg is posted as it is settled. The first miss kills the parlay and is called out. |
+| After each slate | While the parlay is alive: a summary of that slate's legs and what is next. |
+| After the last leg | If every leg hit: the result and the payout split. |
+
+A parlay is dead as soon as one leg misses. That miss is announced, and nothing more is posted about that parlay afterwards. Its remaining legs are still graded for the stats, and `/slip` shows how it finished.
 
 Only games that kick off after a parlay's deadline can be picked for it. With the default Saturday 9:00 PM deadline that means Sunday's and Monday's games. The same limit applies to the commissioner's `/pickfor`. The cycle runs for the 18 weeks of the regular season.
 
