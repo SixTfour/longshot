@@ -1,0 +1,480 @@
+{
+ "1": [
+  {
+   "espn_id": "401872656",
+   "kickoff": "2026-09-10T00:20Z",
+   "game": "NE @ SEA",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872657",
+   "kickoff": "2026-09-11T00:35Z",
+   "game": "SF VS LAR",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872658",
+   "kickoff": "2026-09-13T17:00Z",
+   "game": "ATL @ PIT",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872659",
+   "kickoff": "2026-09-13T17:00Z",
+   "game": "BAL @ IND",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872660",
+   "kickoff": "2026-09-13T17:00Z",
+   "game": "BUF @ HOU",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872661",
+   "kickoff": "2026-09-13T17:00Z",
+   "game": "CHI @ CAR",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872922",
+   "kickoff": "2026-09-13T17:00Z",
+   "game": "CLE @ JAX",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872923",
+   "kickoff": "2026-09-13T17:00Z",
+   "game": "NO @ DET",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872924",
+   "kickoff": "2026-09-13T17:00Z",
+   "game": "NYJ @ TEN",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872925",
+   "kickoff": "2026-09-13T17:00Z",
+   "game": "TB @ CIN",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872926",
+   "kickoff": "2026-09-13T20:25Z",
+   "game": "ARI @ LAC",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872927",
+   "kickoff": "2026-09-13T20:25Z",
+   "game": "GB @ MIN",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872928",
+   "kickoff": "2026-09-13T20:25Z",
+   "game": "MIA @ LV",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872929",
+   "kickoff": "2026-09-13T20:25Z",
+   "game": "WSH @ PHI",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872930",
+   "kickoff": "2026-09-14T00:20Z",
+   "game": "DAL @ NYG",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872931",
+   "kickoff": "2026-09-15T00:15Z",
+   "game": "DEN @ KC",
+   "time_set": true
+  }
+ ],
+ "6": [
+  {
+   "espn_id": "401872995",
+   "kickoff": "2026-10-16T00:15Z",
+   "game": "SEA @ DEN",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872996",
+   "kickoff": "2026-10-18T13:30Z",
+   "game": "HOU VS JAX",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872997",
+   "kickoff": "2026-10-18T17:00Z",
+   "game": "BAL @ CLE",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872998",
+   "kickoff": "2026-10-18T17:00Z",
+   "game": "CAR @ PHI",
+   "time_set": true
+  },
+  {
+   "espn_id": "401872999",
+   "kickoff": "2026-10-18T17:00Z",
+   "game": "CHI @ ATL",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873000",
+   "kickoff": "2026-10-18T17:00Z",
+   "game": "NO @ NYG",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873001",
+   "kickoff": "2026-10-18T17:00Z",
+   "game": "NYJ @ NE",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873002",
+   "kickoff": "2026-10-18T17:00Z",
+   "game": "PIT @ TB",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873003",
+   "kickoff": "2026-10-18T17:00Z",
+   "game": "TEN @ IND",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873004",
+   "kickoff": "2026-10-18T20:05Z",
+   "game": "ARI @ LAR",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873005",
+   "kickoff": "2026-10-18T20:25Z",
+   "game": "BUF @ LV",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873006",
+   "kickoff": "2026-10-18T20:25Z",
+   "game": "LAC @ KC",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873007",
+   "kickoff": "2026-10-19T00:20Z",
+   "game": "DAL @ GB",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873008",
+   "kickoff": "2026-10-20T00:15Z",
+   "game": "WSH @ SF",
+   "time_set": true
+  }
+ ],
+ "12": [
+  {
+   "espn_id": "401873079",
+   "kickoff": "2026-11-26T01:00Z",
+   "game": "GB @ LAR",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873081",
+   "kickoff": "2026-11-26T18:00Z",
+   "game": "CHI @ DET",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873080",
+   "kickoff": "2026-11-26T21:30Z",
+   "game": "PHI @ DAL",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873082",
+   "kickoff": "2026-11-27T01:20Z",
+   "game": "KC @ BUF",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873083",
+   "kickoff": "2026-11-27T20:00Z",
+   "game": "DEN @ PIT",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873084",
+   "kickoff": "2026-11-29T18:00Z",
+   "game": "ATL @ MIN",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873085",
+   "kickoff": "2026-11-29T18:00Z",
+   "game": "BAL @ HOU",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873086",
+   "kickoff": "2026-11-29T18:00Z",
+   "game": "LV @ CLE",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873087",
+   "kickoff": "2026-11-29T18:00Z",
+   "game": "NO @ CIN",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873088",
+   "kickoff": "2026-11-29T18:00Z",
+   "game": "NYG @ IND",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873089",
+   "kickoff": "2026-11-29T18:00Z",
+   "game": "NYJ @ MIA",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873090",
+   "kickoff": "2026-11-29T21:05Z",
+   "game": "TEN @ JAX",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873091",
+   "kickoff": "2026-11-29T21:25Z",
+   "game": "SEA @ SF",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873092",
+   "kickoff": "2026-11-29T21:25Z",
+   "game": "WSH @ ARI",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873093",
+   "kickoff": "2026-11-30T01:20Z",
+   "game": "NE @ LAC",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873094",
+   "kickoff": "2026-12-01T01:15Z",
+   "game": "CAR @ TB",
+   "time_set": true
+  }
+ ],
+ "16": [
+  {
+   "espn_id": "401873140",
+   "kickoff": "2026-12-25T01:15Z",
+   "game": "HOU @ PHI",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873141",
+   "kickoff": "2026-12-25T18:00Z",
+   "game": "GB @ CHI",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873142",
+   "kickoff": "2026-12-25T21:30Z",
+   "game": "BUF @ DEN",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873143",
+   "kickoff": "2026-12-26T01:15Z",
+   "game": "LAR @ SEA",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873144",
+   "kickoff": "2026-12-27T05:00Z",
+   "game": "CAR @ PIT",
+   "time_set": false
+  },
+  {
+   "espn_id": "401873145",
+   "kickoff": "2026-12-27T05:00Z",
+   "game": "CIN @ IND",
+   "time_set": false
+  },
+  {
+   "espn_id": "401873146",
+   "kickoff": "2026-12-27T05:00Z",
+   "game": "TB @ ATL",
+   "time_set": false
+  },
+  {
+   "espn_id": "401873147",
+   "kickoff": "2026-12-27T05:00Z",
+   "game": "WSH @ MIN",
+   "time_set": false
+  },
+  {
+   "espn_id": "401873148",
+   "kickoff": "2026-12-27T18:00Z",
+   "game": "ARI @ NO",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873149",
+   "kickoff": "2026-12-27T18:00Z",
+   "game": "CLE @ BAL",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873150",
+   "kickoff": "2026-12-27T18:00Z",
+   "game": "LAC @ MIA",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873151",
+   "kickoff": "2026-12-27T18:00Z",
+   "game": "NE @ NYJ",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873152",
+   "kickoff": "2026-12-27T21:05Z",
+   "game": "TEN @ LV",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873153",
+   "kickoff": "2026-12-27T21:25Z",
+   "game": "SF @ KC",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873154",
+   "kickoff": "2026-12-28T01:20Z",
+   "game": "JAX @ DAL",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873155",
+   "kickoff": "2026-12-29T01:15Z",
+   "game": "NYG @ DET",
+   "time_set": true
+  }
+ ],
+ "17": [
+  {
+   "espn_id": "401873156",
+   "kickoff": "2027-01-01T01:15Z",
+   "game": "BAL @ CIN",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873157",
+   "kickoff": "2027-01-03T05:00Z",
+   "game": "DEN @ NE",
+   "time_set": false
+  },
+  {
+   "espn_id": "401873158",
+   "kickoff": "2027-01-03T05:00Z",
+   "game": "KC @ LAC",
+   "time_set": false
+  },
+  {
+   "espn_id": "401873159",
+   "kickoff": "2027-01-03T05:00Z",
+   "game": "LAR @ TB",
+   "time_set": false
+  },
+  {
+   "espn_id": "401873160",
+   "kickoff": "2027-01-03T05:00Z",
+   "game": "WSH @ JAX",
+   "time_set": false
+  },
+  {
+   "espn_id": "401873161",
+   "kickoff": "2027-01-03T18:00Z",
+   "game": "BUF @ MIA",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873162",
+   "kickoff": "2027-01-03T18:00Z",
+   "game": "IND @ CLE",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873163",
+   "kickoff": "2027-01-03T18:00Z",
+   "game": "MIN @ NYJ",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873164",
+   "kickoff": "2027-01-03T18:00Z",
+   "game": "NO @ ATL",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873165",
+   "kickoff": "2027-01-03T18:00Z",
+   "game": "NYG @ DAL",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873166",
+   "kickoff": "2027-01-03T18:00Z",
+   "game": "PIT @ TEN",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873167",
+   "kickoff": "2027-01-03T18:00Z",
+   "game": "SEA @ CAR",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873168",
+   "kickoff": "2027-01-03T21:05Z",
+   "game": "LV @ ARI",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873169",
+   "kickoff": "2027-01-03T21:25Z",
+   "game": "DET @ CHI",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873170",
+   "kickoff": "2027-01-04T01:20Z",
+   "game": "PHI @ SF",
+   "time_set": true
+  },
+  {
+   "espn_id": "401873171",
+   "kickoff": "2027-01-05T01:15Z",
+   "game": "HOU @ GB",
+   "time_set": true
+  }
+ ]
+}

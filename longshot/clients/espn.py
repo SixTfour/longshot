@@ -47,6 +47,7 @@ class Game:
     status: str  # ESPN's name, e.g. STATUS_FINAL, STATUS_POSTPONED
     home_score: int
     away_score: int
+    time_set: bool = True  # False while the NFL has not fixed the kickoff (late-season flex games)
 
     @property
     def label(self) -> str:
@@ -54,7 +55,12 @@ class Game:
 
     @property
     def final(self) -> bool:
-        return self.completed and self.status == "STATUS_FINAL"
+        return self.completed and self.state == "post" and not self.called_off
+
+    @property
+    def over(self) -> bool:
+        """Nothing more will happen in this game this week."""
+        return self.final or self.called_off
 
     @property
     def called_off(self) -> bool:
@@ -135,6 +141,7 @@ def parse_scoreboard(payload: dict[str, Any]) -> Scoreboard:
                 status=status.get("name", ""),
                 home_score=scores["home"],
                 away_score=scores["away"],
+                time_set=bool(competition.get("timeValid", True)),
             )
         )
     return Scoreboard(season, season_type, week, sorted(games, key=lambda game: game.kickoff))
@@ -156,10 +163,10 @@ def parse_boxscore(payload: dict[str, Any]) -> dict[str, PlayerLine]:
                 line = players.setdefault(
                     str(athlete["id"]), PlayerLine(athlete.get("displayName", ""), abbr, {})
                 )
-                for key, raw in zip(keys, entry.get("stats", [])):
+                for key, raw in zip(keys, entry.get("stats", []), strict=False):
                     for separator in ("/", "-"):
                         if separator in key:
-                            parts = zip(key.split(separator), str(raw).split(separator))
+                            parts = zip(key.split(separator), str(raw).split(separator), strict=False)
                             break
                     else:
                         parts = [(key, raw)]

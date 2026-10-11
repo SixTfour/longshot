@@ -1,0 +1,32 @@
+# systemd unit for running Longshot on a Raspberry Pi (or any Linux box).
+#
+# Install:
+#   sudo cp deploy/longshot.service /etc/systemd/system/
+#   sudo nano /etc/systemd/system/longshot.service     # set User and the two paths
+#   sudo systemctl daemon-reload
+#   sudo systemctl enable --now longshot
+# Logs:
+#   journalctl -u longshot -f
+
+[Unit]
+Description=Longshot Discord bot
+# A Pi has no battery-backed clock, so wait for the network and a time sync
+# before starting: every scheduled step depends on the time being right.
+Wants=network-online.target time-sync.target
+After=network-online.target time-sync.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/longshot
+ExecStart=/home/pi/longshot/.venv/bin/python -m longshot
+Environment=PYTHONUNBUFFERED=1
+Restart=always
+RestartSec=15
+
+# The bot only needs its own folder and its database folder.
+NoNewPrivileges=true
+PrivateTmp=true
+
+[Install]
+WantedBy=multi-user.target

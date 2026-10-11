@@ -80,15 +80,26 @@ def test_a_second_pick_replaces_the_first():
     run(scenario())
 
 
-def test_started_pending_picks():
+def test_pending_picks_and_progress():
     async def scenario():
         db = await fresh()
-        early, _ = await db.save_pick(pick(1, kickoff="2026-10-16T00:15:00+00:00"))
-        await db.save_pick(pick(2, kickoff="2026-10-18T17:00:00+00:00"))
-        graded, _ = await db.save_pick(pick(3, kickoff="2026-10-16T00:15:00+00:00"))
+        live, _ = await db.save_pick(pick(1))
+        graded, _ = await db.save_pick(pick(2))
         await db.grade_pick(graded, "lost", 12, None, "auto")
-        now = datetime(2026, 10, 16, 1, 0, tzinfo=timezone.utc)
-        assert [p["id"] for p in await db.started_pending_picks(now)] == [early]
+        assert [p["id"] for p in await db.week_picks(2026, 6) if p["status"] == "pending"] == [live]
+
+        await db.set_progress(live, 31)
+        await db.set_progress(graded, 99)  # a settled leg keeps its final number
+        assert (await db.pick(live))["stat_value"] == 31
+        assert (await db.pick(graded))["stat_value"] == 12
+
+        moved = datetime(2026, 10, 19, 23, 0, tzinfo=timezone.utc)
+        await db.set_kickoff(live, moved)
+        assert (await db.pick(live))["kickoff"] == "2026-10-19T23:00:00+00:00"
+
+        # Sending a graded leg back to pending clears when it was graded.
+        await db.grade_pick(graded, "pending", None, None, "42")
+        assert (await db.pick(graded))["graded_at"] is None
         await db.close()
 
     run(scenario())

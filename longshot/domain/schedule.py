@@ -3,6 +3,11 @@
 An NFL week runs Tuesday to Monday. A week's cycle is anchored on the Tuesday
 at or before its first kickoff, and every configured day and time is taken as
 its first occurrence from that Tuesday. All settings are US Eastern.
+
+Holiday weeks start early: Thanksgiving has games from Thursday lunchtime, and
+Christmas can put games on a Wednesday. A deadline that normally sits just
+before the Thursday-night opener would fall after those kickoffs, so in such a
+week it moves to an hour before the first game.
 """
 
 from __future__ import annotations
@@ -90,20 +95,39 @@ def occurrence(anchor: datetime, when: DayTime) -> datetime:
     return datetime.combine(day, time(when.hour, when.minute), tzinfo=ET)
 
 
+# When an ordinary week kicks off. A deadline at or before this is taken to mean
+# "before the week's first game", wherever that game falls.
+STANDARD_OPENER = DayTime(3, 20, 15)
+EARLY_WEEK_LEAD = timedelta(hours=1)
+
+
 @dataclass(frozen=True)
 class WeekTimes:
     announce_at: datetime
     deadline_at: datetime
     reminders: dict[float, datetime]  # hours before the deadline -> when to send
+    moved_early: bool = False  # the deadline was pulled forward for an early first game
 
 
 def week_times(first_kickoff: datetime, announce: DayTime, deadline: DayTime, reminders: list[float]) -> WeekTimes:
     anchor = week_anchor(first_kickoff)
+    announce_at = occurrence(anchor, announce)
     deadline_at = occurrence(anchor, deadline)
+
+    moved_early = deadline.offset <= STANDARD_OPENER.offset and first_kickoff <= deadline_at
+    if moved_early:
+        deadline_at = (first_kickoff - EARLY_WEEK_LEAD).astimezone(ET)
+
     return WeekTimes(
-        announce_at=occurrence(anchor, announce),
+        announce_at=announce_at,
         deadline_at=deadline_at,
-        reminders={hours: deadline_at - timedelta(hours=hours) for hours in reminders},
+        # A reminder that would land before picks even open is dropped.
+        reminders={
+            hours: deadline_at - timedelta(hours=hours)
+            for hours in reminders
+            if deadline_at - timedelta(hours=hours) > announce_at
+        },
+        moved_early=moved_early,
     )
 
 

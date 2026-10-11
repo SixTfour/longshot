@@ -51,6 +51,7 @@ CREATE TABLE IF NOT EXISTS weeks (
     placed_at       TEXT,
     placed_odds     INTEGER,
     killer_pick_id  INTEGER,
+    slates_posted   TEXT NOT NULL DEFAULT '[]',
     result          TEXT,
     payout          REAL,
     recap_at        TEXT,
@@ -116,7 +117,7 @@ PICK_COLUMNS = (
 WEEK_COLUMNS = {
     "stake", "loser_roster_id", "loser_team", "loser_points", "tied_roster_ids", "announced_at",
     "reminders_sent", "deadline_at", "closed_at", "skipped", "placed_at", "placed_odds",
-    "killer_pick_id", "result", "payout", "recap_at",
+    "killer_pick_id", "slates_posted", "result", "payout", "recap_at",
 }
 
 
@@ -292,12 +293,9 @@ class Database:
             "SELECT * FROM picks WHERE season = ? ORDER BY week, kickoff, id", (season,)
         )
 
-    async def started_pending_picks(self, now: datetime) -> list[dict[str, Any]]:
-        """Ungraded picks whose game has kicked off."""
-        return await self._all(
-            "SELECT * FROM picks WHERE status = 'pending' AND kickoff <= ? ORDER BY kickoff, id",
-            (iso(now),),
-        )
+    async def set_kickoff(self, pick_id: int, kickoff: datetime) -> None:
+        """Follow a game the NFL has moved."""
+        await self._run("UPDATE picks SET kickoff = ? WHERE id = ?", (iso(kickoff), pick_id))
 
     async def grade_pick(
         self, pick_id: int, status: str, stat_value: float | None, note: str | None, graded_by: str
@@ -307,6 +305,10 @@ class Database:
             "UPDATE picks SET status = ?, stat_value = ?, note = ?, graded_at = ?, graded_by = ? WHERE id = ?",
             (status, stat_value, note, graded_at, graded_by, pick_id),
         )
+
+    async def set_progress(self, pick_id: int, stat_value: float | None) -> None:
+        """Where an unsettled leg stands mid-game, for /slip."""
+        await self._run("UPDATE picks SET stat_value = ? WHERE id = ? AND status = 'pending'", (stat_value, pick_id))
 
     # --- no-shows ---------------------------------------------------------------
 
