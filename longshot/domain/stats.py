@@ -60,9 +60,10 @@ def compute(
         killer = owner_of_pick.get(week["killer_pick_id"])
         if killer is not None:
             stats[killer].kills += 1
-        loser = by_roster.get(week["loser_roster_id"])
+        # Who held the team when it happened, if that was recorded; otherwise who holds it now.
+        loser = week.get("loser_discord_id") or by_roster.get(week["loser_roster_id"])
         if loser is not None:
-            stats[loser].low_scores += 1
+            stats.setdefault(loser, MemberStats(loser)).low_scores += 1
 
     for row in no_shows:
         if row["discord_id"] in stats:

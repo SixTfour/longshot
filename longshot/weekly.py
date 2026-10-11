@@ -33,12 +33,14 @@ log = logging.getLogger(__name__)
 async def record_loser(bot: Longshot, season: int, week: int, team: dict[str, Any], points: float | None) -> None:
     """Store who owes the stake for a week's main parlay."""
     stake = await bot.settings.stake()
+    member = await bot.db.member_by_roster(team["roster_id"])
+    discord_id = member["discord_id"] if member else None
     await bot.db.ensure_parlay(season, week, MAIN)
     await bot.db.update_parlay(
-        season, week, MAIN, stake=stake, loser_roster_id=team["roster_id"], loser_team=team["team_name"],
-        loser_points=points, tied_roster_ids=None,
+        season, week, MAIN, stake=stake, loser_roster_id=team["roster_id"], loser_discord_id=discord_id,
+        loser_team=team["team_name"], loser_points=points, tied_roster_ids=None,
     )
-    await bot.db.set_debt(season, week, team["roster_id"], team["team_name"], stake)
+    await bot.db.set_debt(season, week, team["roster_id"], team["team_name"], stake, discord_id)
 
 
 async def _team_text(bot: Longshot, team: dict[str, Any]) -> str:

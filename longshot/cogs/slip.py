@@ -8,7 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from .. import render, tracking
+from .. import render, seasons, tracking
 from ..bot import Longshot, commissioner_only
 from ..db import iso, utcnow
 from ..domain.cards import BONUS, MAIN, card_title
@@ -36,29 +36,55 @@ class Slip(commands.Cog):
     def __init__(self, bot: Longshot):
         self.bot = bot
 
-    async def _parlays(self, week: int | None, card: str | None = None) -> list[dict[str, Any]]:
-        """The announced parlays of the requested week (or the live one), optionally just one of them."""
+    async def _parlays(
+        self, week: int | None, card: str | None = None, season: int | None = None
+    ) -> list[dict[str, Any]]:
+        """The announced parlays of one week, optionally just one of them.
+
+        With no week, that is the live week. For an earlier season it is the
+        last week that season has on record.
+        """
         plan = await self.bot.nfl.active(utcnow())
-        if week is None and plan is None:
-            return []
-        season = plan.season if plan else await self.bot.nfl.season()
-        rows = await self.bot.db.parlays(season, week if week is not None else plan.week)
+        current = plan.season if plan else await self.bot.nfl.season()
+        season = current if season is None else season
+        if week is None:
+            if season == current:
+                if plan is None:
+                    return []
+                week = plan.week
+            else:
+                on_record = await self.bot.db.parlays(season)
+                if not on_record:
+                    return []
+                week = on_record[-1]["week"]
+        rows = await self.bot.db.parlays(season, week)
         return [row for row in rows if row["announced_at"] and card in (None, row["card"])]
 
     @app_commands.command(name="slip", description="Show the parlay and how each leg is doing")
-    @app_commands.describe(week="A past week's slip. Leave empty for this week.")
+    @app_commands.describe(week="A past week's slip. Leave empty for this week.", season=seasons.HINT)
     @app_commands.guild_only()
-    async def slip(self, interaction: discord.Interaction, week: app_commands.Range[int, 1, 18] | None = None) -> None:
-        rows = await self._parlays(week)
+    async def slip(
+        self,
+        interaction: discord.Interaction,
+        week: app_commands.Range[int, 1, 18] | None = None,
+        season: seasons.Season | None = None,
+    ) -> None:
+        rows = await self._parlays(week, season=season)
         if not rows:
-            await interaction.response.send_message("There is no parlay for that week.", ephemeral=True)
+            await interaction.response.send_message("There is no parlay on record for that week.", ephemeral=True)
             return
         members = [member["discord_id"] for member in await self.bot.db.members()]
+        this_season = await self.bot.nfl.season()
         embeds = []
         for row in rows:
             key = (row["season"], row["week"], row["card"])
             picks = await self.bot.db.parlay_picks(*key)
-            embed = render.slip_embed(row, picks, row["stake"] or await self.bot.settings.stake())
+            # A slip from an earlier year says which year.
+            title = f"{row['season']} · {card_title(row['week'], row['card'])} parlay"
+            embed = render.slip_embed(
+                row, picks, row["stake"] or await self.bot.settings.stake(),
+                title=title if row["season"] != this_season else None,
+            )
             if not row["closed_at"]:
                 picked = {pick["discord_id"] for pick in picks}
                 waiting = [discord_id for discord_id in members if discord_id not in picked]
@@ -69,6 +95,10 @@ class Slip(commands.Cog):
                     embed.add_field(name="Picks close", value=stamp(parlay.times.deadline_at, "R"), inline=False)
             embeds.append(embed)
         await interaction.response.send_message(embeds=embeds, allowed_mentions=render.QUIET)
+
+    @slip.autocomplete("season")
+    async def _season_choices(self, interaction: discord.Interaction, current: int) -> list[app_commands.Choice[int]]:
+        return await seasons.choices(self.bot, current)
 
     @app_commands.command(name="placed", description="Record that the parlay was placed, with the sportsbook's real odds")
     @app_commands.describe(

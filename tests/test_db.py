@@ -129,6 +129,7 @@ def test_a_week_can_hold_two_parlays():
         assert [row["card"] for row in await db.parlays(2026, 12)] == ["bonus", "main"]
         assert (await db.parlay(2026, 12, "main"))["placed_odds"] is None
         assert len(await db.parlays(2026)) == 2 and len(await db.parlays()) == 2
+        assert await db.parlays(2025) == []
 
         # One member holds a pick in each; replacing one leaves the other alone.
         await db.save_pick(pick(1, week=12, card="bonus", label="DET -2.5"))
@@ -137,6 +138,12 @@ def test_a_week_can_hold_two_parlays():
         assert replaced is True
         assert [p["label"] for p in await db.parlay_picks(2026, 12, "bonus")] == ["DET moneyline"]
         assert (await db.member_pick(2026, 12, "main", 1))["id"] == monday
+
+        assert await db.seasons() == [2026]
+        await db.ensure_parlay(2027, 1, "main")
+        await db.ensure_parlay(2025, 9, "main")
+        assert await db.seasons() == [2027, 2026, 2025]  # newest first
+        assert [row["week"] for row in await db.parlays(2026)] == [12, 12]
 
         await db.add_no_show(2026, 12, "bonus", 3)
         await db.add_no_show(2026, 12, "main", 3)
@@ -150,8 +157,9 @@ def test_a_week_can_hold_two_parlays():
 def test_debt_and_payment():
     async def scenario():
         db = await fresh()
-        await db.set_debt(2026, 6, roster_id=3, team_name="Team Three", amount=10)
+        await db.set_debt(2026, 6, roster_id=3, team_name="Team Three", amount=10, discord_id=300)
         assert (await db.debt(2026, 6))["paid_at"] is None
+        assert (await db.debts(2026))[0]["discord_id"] == 300
         assert await db.mark_paid(2026, 6) is True
         assert await db.mark_paid(2026, 6) is False  # already settled
         assert (await db.debt(2026, 6))["paid_at"] is not None

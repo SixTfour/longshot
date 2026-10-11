@@ -51,9 +51,9 @@ Slates come from the real schedule: games that kick off within 90 minutes of eac
 |---|---|---|
 | `/pick who bet line` | Members | Lock in a leg. `who` is a player or a team; `line` lists the main line and every alternate. |
 | `/mypick` | Members | Show your pick, or picks, for this week. |
-| `/slip [week]` | Members | The week's parlay (both, in Thanksgiving week) and how each leg is doing. |
-| `/stats [member]`, `/leaderboard` | Members | Hit rate, streaks, parlays killed, weeks as lowest scorer, deadlines missed. |
-| `/ledger` | Members | Who owes, what has been collected, what has been won. |
+| `/slip [week] [season]` | Members | The week's parlay (both, in Thanksgiving week) and how each leg is doing. |
+| `/stats [member] [season]`, `/leaderboard [season]` | Members | Hit rate, streaks, parlays killed, weeks as lowest scorer, deadlines missed. |
+| `/ledger [season]` | Members | Who owes, what has been collected, what has been won. |
 | `/members` | Members | Which Sleeper team belongs to which Discord member. |
 | `/setup league_id channel` | Commissioner | Connect the Sleeper league and choose the channel. |
 | `/link member team`, `/unlink member` | Commissioner | Tie a Discord member to a Sleeper team. |
@@ -65,6 +65,8 @@ Slates come from the real schedule: games that kick off within 90 minutes of eac
 | `/admin run step [week] [parlay]` | Commissioner | Run one step of the cycle now. |
 | `/admin loser member [week]` | Commissioner | Set who pays, for a tie or a correction. |
 | `/admin status` | Commissioner | How the bot is set up, this week's times, and Odds API credits left. |
+
+`/slip`, `/stats`, `/leaderboard` and `/ledger` take an optional `season` (the year it started, such as `2026`) for looking back at an earlier year. Left empty, they show the current season. `/slip` with a season and no week shows that season's last parlay.
 
 The commissioner is whoever ran `/setup`. Anyone with the server's Manage Server permission can also use the commissioner commands.
 

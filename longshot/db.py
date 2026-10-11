@@ -43,6 +43,7 @@ CREATE TABLE IF NOT EXISTS parlays (
     card            TEXT NOT NULL DEFAULT 'main',
     stake           REAL,
     loser_roster_id INTEGER,
+    loser_discord_id INTEGER,
     loser_team      TEXT,
     loser_points    REAL,
     tied_roster_ids TEXT,
@@ -100,12 +101,14 @@ CREATE TABLE IF NOT EXISTS no_shows (
 );
 
 -- kind is 'debt' (the week's loser owes the stake) or 'payment' (it was collected).
--- A payment carries the season and week of the debt it settles.
+-- A payment carries the season and week of the debt it settles. discord_id is who held
+-- the team at the time, so an old season still reads correctly after teams change hands.
 CREATE TABLE IF NOT EXISTS ledger (
     id         INTEGER PRIMARY KEY AUTOINCREMENT,
     season     INTEGER NOT NULL,
     week       INTEGER NOT NULL,
     roster_id  INTEGER NOT NULL,
+    discord_id INTEGER,
     team_name  TEXT NOT NULL,
     kind       TEXT NOT NULL,
     amount     REAL NOT NULL,
@@ -120,7 +123,7 @@ PICK_COLUMNS = (
 )
 
 PARLAY_COLUMNS = {
-    "stake", "loser_roster_id", "loser_team", "loser_points", "tied_roster_ids", "announced_at",
+    "stake", "loser_roster_id", "loser_discord_id", "loser_team", "loser_points", "tied_roster_ids", "announced_at",
     "reminders_sent", "deadline_at", "closed_at", "skipped", "placed_at", "placed_odds",
     "killer_pick_id", "slates_posted", "result", "payout", "recap_at",
 }
@@ -271,6 +274,11 @@ class Database:
             "SELECT * FROM parlays WHERE season = ? AND week = ? ORDER BY card", (season, week)
         )
 
+    async def seasons(self) -> list[int]:
+        """Seasons with at least one parlay on record, newest first."""
+        rows = await self._all("SELECT DISTINCT season FROM parlays ORDER BY season DESC")
+        return [row["season"] for row in rows]
+
     # --- picks ------------------------------------------------------------------
 
     async def save_pick(self, pick: dict[str, Any]) -> tuple[int, bool]:
@@ -340,16 +348,18 @@ class Database:
 
     # --- ledger -----------------------------------------------------------------
 
-    async def set_debt(self, season: int, week: int, roster_id: int, team_name: str, amount: float) -> None:
+    async def set_debt(
+        self, season: int, week: int, roster_id: int, team_name: str, amount: float, discord_id: int | None = None
+    ) -> None:
         """Record who owes the stake for a week's main parlay, replacing any earlier answer."""
         current = await self.debt(season, week)
         if current and current["roster_id"] == roster_id and current["amount"] == amount:
             return
         await self.conn.execute("DELETE FROM ledger WHERE season = ? AND week = ?", (season, week))
         await self._run(
-            "INSERT INTO ledger (season, week, roster_id, team_name, kind, amount, created_at) "
-            "VALUES (?, ?, ?, ?, 'debt', ?, ?)",
-            (season, week, roster_id, team_name, amount, iso(utcnow())),
+            "INSERT INTO ledger (season, week, roster_id, discord_id, team_name, kind, amount, created_at) "
+            "VALUES (?, ?, ?, ?, ?, 'debt', ?, ?)",
+            (season, week, roster_id, discord_id, team_name, amount, iso(utcnow())),
         )
 
     async def debt(self, season: int, week: int) -> dict[str, Any] | None:
@@ -381,8 +391,8 @@ class Database:
         if debt is None or debt["paid_at"]:
             return False
         await self._run(
-            "INSERT INTO ledger (season, week, roster_id, team_name, kind, amount, created_at) "
-            "VALUES (?, ?, ?, ?, 'payment', ?, ?)",
-            (season, week, debt["roster_id"], debt["team_name"], debt["amount"], iso(utcnow())),
+            "INSERT INTO ledger (season, week, roster_id, discord_id, team_name, kind, amount, created_at) "
+            "VALUES (?, ?, ?, ?, ?, 'payment', ?, ?)",
+            (season, week, debt["roster_id"], debt["discord_id"], debt["team_name"], debt["amount"], iso(utcnow())),
         )
         return True

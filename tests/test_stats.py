@@ -55,6 +55,18 @@ def test_ranking_puts_members_with_no_decided_legs_last():
     assert stats[4].hit_rate is None
 
 
+def test_lowest_scorer_is_whoever_held_the_team_at_the_time():
+    # Roster 12 belonged to member 2 back then; member 1 has since taken it over.
+    members = [{"discord_id": 1, "roster_id": 12}, {"discord_id": 2, "roster_id": 11}]
+    recorded = [week(2, loser=12) | {"loser_discord_id": 2}]
+    assert [compute(members, [], recorded, [])[n].low_scores for n in (1, 2)] == [0, 1]
+    # A week saved without that detail falls back to whoever holds the team now.
+    assert [compute(members, [], [week(2, loser=12)], [])[n].low_scores for n in (1, 2)] == [1, 0]
+    # Someone who has left the league altogether still has their weeks counted.
+    gone = [week(2, loser=12) | {"loser_discord_id": 9}]
+    assert compute(members, [], gone, [])[9].low_scores == 1
+
+
 def test_picks_from_someone_no_longer_linked_are_still_counted():
     stats = compute(MEMBERS[:2], PICKS, WEEKS, NO_SHOWS)
     assert stats[3].legs == 3

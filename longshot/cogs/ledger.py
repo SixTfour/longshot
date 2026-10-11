@@ -6,7 +6,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from .. import render
+from .. import render, seasons
 from ..bot import Longshot, commissioner_only
 from ..domain.grading import WON
 from ..domain.odds_math import format_money
@@ -52,15 +52,16 @@ class Ledger(commands.Cog):
         )
 
     @app_commands.command(name="ledger", description="Debts, money collected and winnings for the season")
+    @app_commands.describe(season=seasons.HINT)
     @app_commands.guild_only()
-    async def ledger(self, interaction: discord.Interaction) -> None:
-        season = await self.bot.nfl.season()
+    async def ledger(self, interaction: discord.Interaction, season: seasons.Season | None = None) -> None:
+        season = await seasons.resolve(self.bot, season)
         debts = await self.bot.db.debts(season)
         weeks = await self.bot.db.parlays(season)
         by_roster = {member["roster_id"]: member["discord_id"] for member in await self.bot.db.members()}
 
         def who(debt: dict) -> str:
-            discord_id = by_roster.get(debt["roster_id"])
+            discord_id = debt["discord_id"] or by_roster.get(debt["roster_id"])
             return render.mention(discord_id) if discord_id else f"**{debt['team_name']}**"
 
         unpaid = [debt for debt in debts if not debt["paid_at"]]
@@ -85,6 +86,10 @@ class Ledger(commands.Cog):
         if history:
             embed.add_field(name="Who owed the stake", value="\n".join(history), inline=False)
         await interaction.response.send_message(embed=embed, allowed_mentions=render.QUIET)
+
+    @ledger.autocomplete("season")
+    async def _season_choices(self, interaction: discord.Interaction, current: int) -> list[app_commands.Choice[int]]:
+        return await seasons.choices(self.bot, current)
 
 
 async def setup(bot: Longshot) -> None:
