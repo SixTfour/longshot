@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS parlays (
     deadline_at     TEXT,
     closed_at       TEXT,
     skipped         INTEGER NOT NULL DEFAULT 0,
+    backfilled      INTEGER NOT NULL DEFAULT 0,
     placed_at       TEXT,
     placed_odds     INTEGER,
     killer_pick_id  INTEGER,
@@ -124,7 +125,7 @@ PICK_COLUMNS = (
 
 PARLAY_COLUMNS = {
     "stake", "loser_roster_id", "loser_discord_id", "loser_team", "loser_points", "tied_roster_ids", "announced_at",
-    "reminders_sent", "deadline_at", "closed_at", "skipped", "placed_at", "placed_odds",
+    "reminders_sent", "deadline_at", "closed_at", "skipped", "backfilled", "placed_at", "placed_odds",
     "killer_pick_id", "slates_posted", "result", "payout", "recap_at",
 }
 

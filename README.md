@@ -84,6 +84,7 @@ Slates come from the real schedule: games that kick off within 90 minutes of eac
 | `/link member team`, `/unlink member` | Commissioner | Tie a Discord member to a Sleeper team. |
 | `/config [setting] [value]` | Commissioner | Show or change the deadlines, sportsbook, announcement time, reminders, stake and line cache. |
 | `/pickfor member who bet line` | Commissioner | Enter or replace a member's pick, including after the deadline, on any of that parlay's games that has not kicked off. |
+| `/backfill member week game who bet odds [line]` | Commissioner | Record a pick after the fact, for a game that has already kicked off. See below. |
 | `/placed odds [parlay]` | Commissioner | Record that the parlay was placed, with the sportsbook's odds. |
 | `/paid member [week]` | Commissioner | Mark a stake as collected. |
 | `/grade member result [week] [parlay]` | Commissioner | Settle a leg by hand, or correct one. |
@@ -94,6 +95,21 @@ Slates come from the real schedule: games that kick off within 90 minutes of eac
 `/slip`, `/stats`, `/leaderboard` and `/ledger` take an optional `season` (the year it started, such as `2026`) for looking back at an earlier year. Left empty, they show the current season. `/slip` with a season and no week shows that season's last parlay.
 
 The commissioner is whoever ran `/setup`. Anyone with the server's Manage Server permission can also use the commissioner commands.
+
+### Backfilling picks
+
+`/backfill` records a pick for a game that has already kicked off: a week the parlay was run by hand before the bot, or a pick that never got entered.
+
+- **You type the line and the price** from the bet slip, because the odds feed has no lines for games already played. The line is written as on the slip: `over 74.5`, `under 74.5`, `75+`, `-2.5`. Moneyline and anytime TD need no line. As you type, the field shows how it will be read.
+- **The bot grades it** from ESPN's box score, the same way as any other leg.
+- **Players** are offered from the game's box score as well as the current rosters, so someone who has since changed teams can still be found.
+- **A week the bot never ran** is recorded as a finished parlay and is never posted about. It still counts in `/stats`, `/leaderboard` and `/slip`.
+- **A parlay the bot is running** gets the leg added and announced like any late pick, including if it misses.
+- **Entering a member's pick again** replaces it, and the parlay's result is worked out again.
+- **It is not limited to the parlay's game window** and does not check for duplicate legs: it records what was actually bet.
+- **For who owed the stake** in an earlier week, use `/admin loser member week`, then `/paid`.
+
+For a game that has not kicked off, use `/pickfor`.
 
 ### Bets supported
 

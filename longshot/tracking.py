@@ -126,6 +126,19 @@ async def _grade_game(bot: Longshot, game: Game, legs: list[Pick]) -> list[tuple
     return results
 
 
+async def settle_legs(bot: Longshot, game: Game, legs: list[Pick]) -> list[int]:
+    """Grade pending legs on one game and store the outcome. Returns the ids of the legs now settled."""
+    settled: list[int] = []
+    for leg, grade in await _grade_game(bot, game, legs):
+        if grade.status == PENDING:
+            if grade.value != leg["stat_value"]:
+                await bot.db.set_progress(leg["id"], grade.value)
+        else:
+            await bot.db.grade_pick(leg["id"], grade.status, grade.value, grade.note, "auto")
+            settled.append(leg["id"])
+    return settled
+
+
 async def track_week(bot: Longshot, season: int, week: int, *, quiet: bool = False) -> None:
     """Fetch the week's live scores once, then grade and report each of its parlays."""
     schedule = await bot.nfl.games(season, week, fresh=True)
@@ -144,16 +157,12 @@ async def track_week(bot: Longshot, season: int, week: int, *, quiet: bool = Fal
             game = games.get(event_id)
             if game is None or (game.state == "pre" and not game.called_off):
                 continue
-            for leg, grade in await _grade_game(bot, game, legs):
-                if grade.status == PENDING:
-                    if grade.value != leg["stat_value"]:
-                        await bot.db.set_progress(leg["id"], grade.value)
-                else:
-                    await bot.db.grade_pick(leg["id"], grade.status, grade.value, grade.note, "auto")
-                    settled.append(leg["id"])
+            settled += await settle_legs(bot, game, legs)
 
-        await announce_grades(bot, season, week, card, settled, quiet=quiet)
-        await post_slates(bot, season, week, card, card_games.get(card, []), quiet=quiet)
+        # A parlay entered after the fact with /backfill is never posted about.
+        silent = quiet or bool(row["backfilled"])
+        await announce_grades(bot, season, week, card, settled, quiet=silent)
+        await post_slates(bot, season, week, card, card_games.get(card, []), quiet=silent)
 
 
 def _first_miss(lost: list[Pick]) -> Pick:

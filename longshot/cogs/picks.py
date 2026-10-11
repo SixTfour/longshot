@@ -15,16 +15,16 @@ from discord.ext import commands
 
 from .. import render
 from ..bot import Longshot, commissioner_only
-from ..clients.espn import Athlete, Game, Team
+from ..clients.espn import Game
 from ..clients.odds import OddsApiError
 from ..db import parse_iso, utcnow
-from ..domain.lines import Line, conflict, filter_lines, find_line, pick_label
-from ..domain.markets import PROP_MARKETS, TEAM_BETS, props_for_position
-from ..domain.names import normalize
+from ..domain.lines import Line, conflict, filter_lines, find_line
+from ..domain.markets import PROP_MARKETS
 from ..domain.odds_math import format_american
-from ..domain.schedule import kickoff_text, stamp
+from ..domain.schedule import stamp
 from ..linebook import NoCredits
 from ..nfl import Parlay, WeekPlan
+from ..subjects import Subject, bet_label, bets, pick_row, resolve, resolve_bet, search, subjects_for
 
 log = logging.getLogger(__name__)
 
@@ -37,30 +37,6 @@ NOTHING = "-"  # the value behind a list entry that is a notice, not a choice
 
 def notice(text: str) -> list[Choice]:
     return [Choice(name=text[:100], value=NOTHING)]
-
-
-@dataclass(frozen=True)
-class Subject:
-    """Who a pick is about: a team, or a player on a team, in one game."""
-
-    game: Game
-    team: Team
-    athlete: Athlete | None = None
-
-    @property
-    def name(self) -> str:
-        return self.athlete.name if self.athlete else self.team.name
-
-    @property
-    def value(self) -> str:
-        return f"p:{self.athlete.id}" if self.athlete else f"t:{self.team.abbr}"
-
-    @property
-    def label(self) -> str:
-        when = f"{self.game.label} {kickoff_text(self.game.kickoff)}"
-        if self.athlete:
-            return f"{self.athlete.name} · {self.athlete.position} · {when}"
-        return f"{self.team.name} · {when}"
 
 
 @dataclass(frozen=True)
@@ -112,57 +88,10 @@ class Picks(commands.Cog):
         return Window(plan, [], reason)
 
     def _subjects(self, games: list[Game]) -> list[Subject]:
-        teams = [Subject(game, team) for game in games for team in (game.away, game.home)]
-        by_abbr = {subject.team.abbr: subject for subject in teams}
-        players = [
-            Subject(by_abbr[athlete.team].game, by_abbr[athlete.team].team, athlete)
-            for athlete in self.bot.nfl.athletes(games)
-            if athlete.team in by_abbr
-        ]
-        return teams + players
-
-    def _search(self, games: list[Game], typed: str) -> list[Subject]:
-        """Teams and players matching what has been typed, best match first."""
-        needle = normalize(typed)
-        subjects = self._subjects(games)
-        if not needle:
-            return [subject for subject in subjects if subject.athlete is None]
-
-        ranked = []
-        for subject in subjects:
-            name = normalize(subject.name)
-            if name.startswith(needle) or (subject.athlete is None and subject.team.abbr.lower() == needle):
-                score = 0
-            elif any(word.startswith(needle) for word in name.split()):
-                score = 1
-            elif needle in name:
-                score = 2
-            else:
-                continue
-            ranked.append((score, subject.athlete is not None, subject.name, subject))
-        return [entry[3] for entry in sorted(ranked, key=lambda entry: entry[:3])]
+        return subjects_for(games, self.bot.nfl.athletes(games))
 
     def _resolve(self, games: list[Game], value: str) -> Subject | None:
-        """Turn the 'who' field back into a subject: a value from the list, or an exact name typed out."""
-        subjects = self._subjects(games)
-        for subject in subjects:
-            if subject.value == value:
-                return subject
-        wanted = normalize(value)
-        exact = [subject for subject in subjects if normalize(subject.name) == wanted]
-        return exact[0] if len(exact) == 1 else None
-
-    @staticmethod
-    def _bets(subject: Subject) -> list[tuple[str, str]]:
-        if subject.athlete is None:
-            return list(TEAM_BETS.items())
-        return [(market.key, market.label) for market in props_for_position(subject.athlete.position)]
-
-    def _resolve_bet(self, subject: Subject, value: str) -> str | None:
-        for key, label in self._bets(subject):
-            if value == key or value.strip().lower() == label.lower():
-                return key
-        return None
+        return resolve(self._subjects(games), value)
 
     async def _lines(self, subject: Subject, bet: str) -> list[Line]:
         if subject.athlete is None:
@@ -181,7 +110,8 @@ class Picks(commands.Cog):
         if not self.bot.nfl.warmed(games):
             # First use since a restart: load rosters in the background; teams work meanwhile.
             self._warming = asyncio.create_task(self.bot.nfl.warm(games))
-        return [Choice(name=subject.label[:100], value=subject.value) for subject in self._search(games, current)[:25]]
+        found = search(self._subjects(games), current)[:25]
+        return [Choice(name=subject.label[:100], value=subject.value) for subject in found]
 
     async def _bet_choices(self, interaction: discord.Interaction, current: str, *, late: bool) -> list[Choice]:
         games = (await self._window(late)).games
@@ -189,12 +119,12 @@ class Picks(commands.Cog):
         if subject is None:
             return notice("Choose a player or team first.")
         typed = current.strip().lower()
-        return [Choice(name=label, value=key) for key, label in self._bets(subject) if typed in label.lower()][:25]
+        return [Choice(name=label, value=key) for key, label in bets(subject) if typed in label.lower()][:25]
 
     async def _line_choices(self, interaction: discord.Interaction, current: str, *, late: bool) -> list[Choice]:
         games = (await self._window(late)).games
         subject = self._resolve(games, interaction.namespace.who or "")
-        bet = self._resolve_bet(subject, interaction.namespace.bet or "") if subject else None
+        bet = resolve_bet(subject, interaction.namespace.bet or "") if subject else None
         if subject is None or bet is None:
             return notice("Choose who and the bet first.")
         book = await self.bot.settings.sportsbook_name()
@@ -246,17 +176,16 @@ class Picks(commands.Cog):
                 "Start typing a name in `who` and choose from the list."
             )
             return
-        bet_key = self._resolve_bet(subject, bet)
+        bet_key = resolve_bet(subject, bet)
         if bet_key is None:
             await say(f"Choose the bet for {subject.name} from the list.")
             return
 
         book = await bot.settings.sportsbook_name()
-        bet_label = TEAM_BETS.get(bet_key) or PROP_MARKETS[bet_key].label
         lines = await self._lines(subject, bet_key)
         if not lines:
             await say(
-                f"{book} has no **{bet_label}** line for **{subject.name}** right now, so nothing was saved. "
+                f"{book} has no **{bet_label(bet_key)}** line for **{subject.name}** right now, so nothing was saved. "
                 "Choose another bet."
             )
             return
@@ -270,32 +199,7 @@ class Picks(commands.Cog):
 
         game = subject.game
         parlay = window.parlay_for(game)  # the game decides which parlay the pick joins
-        prop = PROP_MARKETS.get(bet_key)
-        pick = {
-            "season": parlay.season,
-            "week": parlay.week,
-            "card": parlay.card,
-            "discord_id": target.id,
-            "espn_event_id": game.espn_id,
-            "game": game.label,
-            "kickoff": game.kickoff.isoformat(timespec="seconds"),
-            "home_abbr": game.home.abbr,
-            "away_abbr": game.away.abbr,
-            "market": chosen.market,
-            "side": chosen.side,
-            "line": chosen.point,
-            "price": chosen.price,
-            "alt": int(chosen.alt),
-            "team_abbr": None if subject.athlete else subject.team.abbr,
-            "player_id": subject.athlete.id if subject.athlete else None,
-            "player_name": subject.athlete.name if subject.athlete else None,
-            "label": pick_label(
-                chosen, game=game.label,
-                player=subject.athlete.name if subject.athlete else None,
-                noun=prop.noun if prop else None,
-            ),
-            "entered_by": interaction.user.id,
-        }
+        pick = pick_row(parlay.key, target.id, subject, chosen, interaction.user.id)
 
         for other in await bot.db.parlay_picks(*parlay.key):
             if other["discord_id"] == target.id:

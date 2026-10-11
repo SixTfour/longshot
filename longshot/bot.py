@@ -24,7 +24,7 @@ from .views import PaidButton
 
 log = logging.getLogger(__name__)
 
-COGS = ("setup", "config", "picks", "slip", "ledger", "stats", "admin")
+COGS = ("setup", "config", "picks", "backfill", "slip", "ledger", "stats", "admin")
 FANTASY_TTL = timedelta(hours=6)  # how long the league's season details are reused
 
 

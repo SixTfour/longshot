@@ -45,7 +45,7 @@ def play(tmp_path, monkeypatch, scenario, *, week=WEEK, deadline="thu 19:00", **
 
         try:
             # The bot loads each cog as a fresh module, so patch the ones it is actually using.
-            for cog in ("picks", "slip", "admin", "config"):
+            for cog in ("picks", "backfill", "slip", "admin", "config"):
                 monkeypatch.setattr(sys.modules[f"longshot.cogs.{cog}"], "utcnow", lambda: clock["now"])
             await scenario(world, at)
         finally:

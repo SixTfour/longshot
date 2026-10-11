@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import math
+import re
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
@@ -122,6 +124,54 @@ def player_lines(markets: Markets, prop: PropMarket, player_name: str) -> list[L
 
     lines = _dedupe(lines)
     return sorted(lines, key=lambda line: (line.alt, line.point or 0.0, line.side != "over"))
+
+
+_OVER_UNDER = re.compile(r"^(o|over|u|under)\s*(\d+(?:\.\d+)?)$")
+_OR_MORE = re.compile(r"^(\d+)\s*\+$")
+
+
+def typed_line(
+    bet: str, text: str | None, price: int, *, team_abbr: str = "", is_home: bool = False, prop: PropMarket | None = None
+) -> Line:
+    """A line typed in from an old bet slip, for /backfill, where the odds feed has nothing to offer.
+
+    bet is 'h2h', 'spreads', 'totals' or a prop's key. Raises ValueError, saying
+    what was expected, if the text cannot be read as a line for that bet.
+    """
+    typed = (text or "").strip().lower().replace("\u2212", "-")
+    team_side = "home" if is_home else "away"
+
+    if bet == "h2h":
+        return Line("h2h", team_side, None, price, False, f"{team_abbr} moneyline")
+    if prop is not None and prop.yes_only:
+        return Line(prop.key, "yes", None, price, False, prop.label)
+
+    if bet == "spreads":
+        if typed in ("pk", "pick", "pickem", "pick'em", "even"):
+            point = 0.0
+        else:
+            try:
+                point = float(typed)
+            except ValueError:
+                point = math.nan
+        if not math.isfinite(point) or abs(point) > 60:
+            raise ValueError(f"For a spread, give {team_abbr or 'the team'}'s line, such as `-2.5` or `+3`.")
+        text_out = f"{team_abbr} PK" if point == 0 else f"{team_abbr} {point:+g}"
+        return Line("spreads", team_side, point, price, False, text_out)
+
+    market = "totals" if bet == "totals" else prop.key
+    match = _OVER_UNDER.match(typed)
+    if match:
+        side = "over" if match.group(1) in ("o", "over") else "under"
+        point = float(match.group(2))
+        return Line(market, side, point, price, False, f"{side.title()} {point:g}")
+    match = _OR_MORE.match(typed)
+    if match and bet != "totals":
+        # "75+" on a slip is over 74.5.
+        return Line(market, "over", int(match.group(1)) - 0.5, price, True, f"{int(match.group(1))}+")
+    if bet == "totals":
+        raise ValueError("For a game total, give the line as `over 46.5` or `under 46.5`.")
+    raise ValueError("Give the line as `over 74.5`, `under 74.5` or `75+`.")
 
 
 def filter_lines(lines: Sequence[Line], typed: str) -> list[Line]:

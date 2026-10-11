@@ -97,4 +97,5 @@ class Scheduler:
 
         for row in await bot.db.parlays():
             if row["closed_at"] and not row["recap_at"]:
-                await weekly.recap(bot, row["season"], row["week"], row["card"], quiet=quiet)
+                silent = quiet or bool(row["backfilled"])  # entered after the fact: never posted about
+                await weekly.recap(bot, row["season"], row["week"], row["card"], quiet=silent)
