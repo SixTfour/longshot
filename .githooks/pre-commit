@@ -1,0 +1,46 @@
+#!/bin/sh
+# Refuses a commit that would put a secret in the repository.
+# Enable once per clone with: git config core.hooksPath .githooks
+
+fail() {
+    echo "pre-commit: $1" >&2
+    echo "pre-commit: commit blocked. Nothing was committed." >&2
+    exit 1
+}
+
+# 1. No .env files, other than the empty template.
+for path in $(git diff --cached --name-only --diff-filter=ACMR); do
+    case "$(basename "$path")" in
+        .env.example) ;;
+        .env|.env.*) fail "$path is a secrets file and must not be committed." ;;
+    esac
+done
+
+added=$(git diff --cached --no-color -U0 --diff-filter=ACMR | grep '^+' | grep -v '^+++')
+
+# 2. No value copied out of the local .env.
+if [ -f .env ]; then
+    while IFS= read -r line || [ -n "$line" ]; do
+        case "$line" in
+            *TOKEN*=*|*KEY*=*|*SECRET*=*|*PASSWORD*=*) ;;
+            *) continue ;;
+        esac
+        name=${line%%=*}
+        value=${line#*=}
+        value=$(printf '%s' "$value" | tr -d '\r' | sed -e 's/^["'"'"']//' -e 's/["'"'"']$//')
+        [ ${#value} -ge 8 ] || continue
+        if printf '%s\n' "$added" | grep -qF -- "$value"; then
+            fail "the staged changes contain the value of $name from .env."
+        fi
+    done < .env
+fi
+
+# 3. Nothing shaped like a Discord bot token or an Odds API key in a URL.
+if printf '%s\n' "$added" | grep -qE '[MNO][A-Za-z0-9_-]{23,25}\.[A-Za-z0-9_-]{6}\.[A-Za-z0-9_-]{27,}'; then
+    fail "the staged changes contain something shaped like a Discord bot token."
+fi
+if printf '%s\n' "$added" | grep -qiE 'apiKey=[0-9a-f]{32}'; then
+    fail "the staged changes contain something shaped like an Odds API key."
+fi
+
+exit 0

@@ -1,0 +1,27 @@
+# Secrets: never commit these. Only .env.example belongs in the repo.
+.env
+.env.*
+!.env.example
+
+# Local data
+*.db
+*.db-wal
+*.db-shm
+*.sqlite3
+data/
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+
+# Editors and OS
+.vscode/
+.idea/
+Thumbs.db
+.DS_Store
