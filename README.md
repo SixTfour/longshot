@@ -114,6 +114,8 @@ Slates come from the real schedule: games that kick off within 90 minutes of eac
 | `/admin loser member [week]` | Commissioner | Set who pays, for a tie or a correction. |
 | `/admin status` | Commissioner | How the bot is set up, this week's times, and Odds API credits left. |
 
+Commands only work in the league channel chosen with `/setup`, or in a thread inside it. Used anywhere else, they reply privately with a pointer to that channel. `/setup` itself works anywhere, which is how the channel is changed.
+
 `/slip`, `/stats`, `/leaderboard` and `/ledger` take an optional `season` (the year it started, such as `2026`) for looking back at an earlier year. Left empty, they show the current season. `/slip` with a season and no week shows that season's last parlay.
 
 The commissioner is whoever ran `/setup`. Anyone with the server's Manage Server permission can also use the commissioner commands.

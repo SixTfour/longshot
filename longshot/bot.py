@@ -43,10 +43,38 @@ def commissioner_only():
     return app_commands.check(predicate)
 
 
+class LeagueTree(app_commands.CommandTree):
+    """Keeps every command in the league channel chosen with /setup.
+
+    The check runs before any command, and before the lists a command shows
+    while it is being filled in.
+    """
+
+    async def interaction_check(self, interaction: discord.Interaction, /) -> bool:
+        command = (interaction.data or {}).get("name")
+        parent_id = getattr(interaction.channel, "parent_id", None)  # set when used in a thread
+        league_channel = await self.client.misplaced(command, interaction.channel_id, parent_id)
+        if league_channel is None:
+            return True
+        try:
+            if interaction.type is discord.InteractionType.autocomplete:
+                await interaction.response.autocomplete([])
+            else:
+                await interaction.response.send_message(
+                    f"Longshot commands only work in <#{league_channel}>.", ephemeral=True
+                )
+        except discord.HTTPException:
+            pass
+        return False
+
+
 class Longshot(commands.Bot):
     def __init__(self, config: Config):
         # No privileged intents: everything runs on slash commands and buttons.
-        super().__init__(command_prefix=commands.when_mentioned, intents=discord.Intents.default(), help_command=None)
+        super().__init__(
+            command_prefix=commands.when_mentioned, intents=discord.Intents.default(), help_command=None,
+            tree_cls=LeagueTree,
+        )
         self.config = config
         self.db = Database(config.db_path)
         self.settings = Settings(self.db, config.setting_defaults)
@@ -112,6 +140,19 @@ class Longshot(commands.Bot):
 
     async def league_id(self) -> str | None:
         return await self.db.get_state("league_id")
+
+    async def misplaced(self, command: str | None, channel_id: int | None, parent_id: int | None = None) -> int | None:
+        """The league channel's id if a command was used somewhere else, or None if it may run.
+
+        /setup works anywhere, since it is how the channel is chosen and changed.
+        A thread inside the league channel counts as the channel.
+        """
+        if command == "setup":
+            return None
+        league_channel = await self.db.get_state("channel_id")
+        if league_channel is None or int(league_channel) in (channel_id, parent_id):
+            return None
+        return int(league_channel)
 
     async def fantasy(self) -> FantasySeason | None:
         """When the connected league's fantasy season runs, from Sleeper. None until /setup has been run."""

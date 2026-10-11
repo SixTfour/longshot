@@ -85,7 +85,8 @@ class Setup(commands.Cog):
         linked = {member["roster_id"] for member in await self.bot.db.members()}
         await interaction.followup.send(
             f"Connected to **{league.get('name', 'your league')}** ({league_year} season, {len(teams)} teams). I will post in "
-            f"{channel.mention}, and you are the commissioner.\n"
+            f"{channel.mention}, and you are the commissioner. Commands only work in that channel; "
+            "`/setup` works anywhere, so you can move it.\n"
             f"{len(linked & {team['roster_id'] for team in teams})} of {len(teams)} teams are linked to a Discord "
             "member. Link each one with `/link`, then check with `/members`.\n"
             f"Sleeper has the fantasy season as {fantasy.span}; parlays run for those weeks only. The commissioner "
