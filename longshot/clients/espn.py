@@ -87,9 +87,27 @@ class Game:
 @dataclass(frozen=True)
 class Scoreboard:
     season: int
-    season_type: int
     week: int
     games: list[Game]
+
+
+@dataclass(frozen=True)
+class SeasonCalendar:
+    """When the regular season runs, week by week, from ESPN's own calendar."""
+
+    season: int  # the year the season starts in
+    weeks: tuple[tuple[int, datetime, datetime], ...]  # (week number, start, end), in order
+
+    @property
+    def last_week(self) -> int:
+        return self.weeks[-1][0] if self.weeks else 0
+
+    def regular_week(self, now: datetime) -> int | None:
+        """The regular-season week that contains now, or None in the preseason, playoffs and offseason."""
+        if not self.weeks or not self.weeks[0][1] <= now <= self.weeks[-1][2]:
+            return None
+        # ESPN leaves a minute between one week's end and the next one's start; go by the starts.
+        return max(week for week, start, _ in self.weeks if start <= now)
 
 
 @dataclass(frozen=True)
@@ -114,9 +132,33 @@ def _number(text: Any) -> float | None:
         return None
 
 
+def _when(text: str) -> datetime:
+    return datetime.fromisoformat(text.replace("Z", "+00:00"))
+
+
+def _season_year(payload: dict[str, Any]) -> int:
+    """The season's year. ESPN gives it at the top of some responses and only under the league in others."""
+    league = (payload.get("leagues") or [{}])[0]
+    year = (payload.get("season") or {}).get("year") or (league.get("season") or {}).get("year")
+    if year is None:
+        raise EspnError("ESPN's response does not say which season it is.")
+    return int(year)
+
+
+def parse_calendar(payload: dict[str, Any]) -> SeasonCalendar:
+    """The regular season's weeks. Empty if ESPN lists none, which reads as 'not in season'."""
+    league = (payload.get("leagues") or [{}])[0]
+    weeks: list[tuple[int, datetime, datetime]] = []
+    for span in league.get("calendar") or []:
+        if not isinstance(span, dict) or str(span.get("value")) != str(REGULAR_SEASON):
+            continue
+        for entry in span.get("entries") or []:
+            weeks.append((int(entry["value"]), _when(entry["startDate"]), _when(entry["endDate"])))
+    return SeasonCalendar(_season_year(payload), tuple(sorted(weeks)))
+
+
 def parse_scoreboard(payload: dict[str, Any]) -> Scoreboard:
-    season = int(payload["season"]["year"])
-    season_type = int(payload["season"]["type"])
+    season = _season_year(payload)
     week = int((payload.get("week") or {}).get("number") or 0)
     games = []
     for event in payload.get("events", []):
@@ -133,7 +175,7 @@ def parse_scoreboard(payload: dict[str, Any]) -> Scoreboard:
                 espn_id=str(event["id"]),
                 season=season,
                 week=week,
-                kickoff=datetime.fromisoformat(event["date"].replace("Z", "+00:00")),
+                kickoff=_when(event["date"]),
                 home=sides["home"],
                 away=sides["away"],
                 state=status.get("state", "pre"),
@@ -144,7 +186,7 @@ def parse_scoreboard(payload: dict[str, Any]) -> Scoreboard:
                 time_set=bool(competition.get("timeValid", True)),
             )
         )
-    return Scoreboard(season, season_type, week, sorted(games, key=lambda game: game.kickoff))
+    return Scoreboard(season, week, sorted(games, key=lambda game: game.kickoff))
 
 
 def parse_boxscore(payload: dict[str, Any]) -> dict[str, PlayerLine]:
@@ -209,12 +251,14 @@ class EspnClient:
         except (aiohttp.ClientError, TimeoutError) as error:
             raise EspnError(f"Could not reach ESPN: {error or type(error).__name__}") from error
 
-    async def scoreboard(self, season: int | None = None, week: int | None = None) -> Scoreboard:
-        """One regular-season week, or the current week when called with no arguments."""
-        params: dict[str, Any] = {}
-        if season is not None and week is not None:
-            params = {"dates": season, "seasontype": REGULAR_SEASON, "week": week}
-        return parse_scoreboard(await self._get(f"{SITE}/scoreboard", **params))
+    async def scoreboard(self, season: int, week: int) -> Scoreboard:
+        """One regular-season week's games."""
+        payload = await self._get(f"{SITE}/scoreboard", dates=season, seasontype=REGULAR_SEASON, week=week)
+        return parse_scoreboard(payload)
+
+    async def calendar(self) -> SeasonCalendar:
+        """The current season's calendar."""
+        return parse_calendar(await self._get(f"{SITE}/scoreboard"))
 
     async def boxscore(self, event_id: str) -> dict[str, PlayerLine]:
         return parse_boxscore(await self._get(f"{SITE}/summary", event=event_id))

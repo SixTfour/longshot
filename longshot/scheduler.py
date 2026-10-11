@@ -3,6 +3,10 @@
 Nothing here remembers what it did: every step looks at the database to see
 whether it has already run. So a bot that was switched off simply catches up
 the next time it starts.
+
+Nothing is posted outside the regular season. There is no live week then, so
+nothing is announced; and if the bot comes back after a long break with a
+parlay left unfinished, it settles that parlay's records without posting.
 """
 
 from __future__ import annotations
@@ -55,6 +59,7 @@ class Scheduler:
         if await bot.league_id() is None:
             return  # /setup has not been run yet
 
+        quiet = await bot.nfl.regular_week(now) is None  # preseason, playoffs or offseason
         plan = await bot.nfl.active(now)
         if plan is not None:
             await bot.nfl.warm(plan.games)  # rosters for /pick; a no-op once loaded
@@ -69,12 +74,12 @@ class Scheduler:
             if row["announced_at"] and not row["closed_at"] and not is_active:
                 parlay = await bot.nfl.parlay(row["season"], row["week"], row["card"])
                 if parlay is not None:
-                    await weekly.close_picks(bot, parlay, now)
+                    await weekly.close_picks(bot, parlay, now, quiet=quiet)
 
         if self._last_track is None or now - self._last_track >= TRACK_EVERY:
             self._last_track = now
-            await tracking.track(bot, now)
+            await tracking.track(bot, now, quiet=quiet)
 
         for row in await bot.db.parlays():
             if row["closed_at"] and not row["recap_at"]:
-                await weekly.recap(bot, row["season"], row["week"], row["card"])
+                await weekly.recap(bot, row["season"], row["week"], row["card"], quiet=quiet)

@@ -10,6 +10,8 @@ from discord.ext import commands
 
 from .. import render
 from ..bot import Longshot, commissioner_only
+from ..clients.espn import EspnError
+from ..domain.loser import league_season
 
 TEAMS_TTL = 300  # seconds
 
@@ -46,6 +48,20 @@ class Setup(commands.Cog):
             await interaction.followup.send("That Sleeper league is not an NFL league.")
             return
 
+        # Sleeper gives a renewed league a new ID each season; last season's would give last season's scores.
+        league_year = league_season(league)
+        try:
+            nfl_year = await self.bot.nfl.season()
+        except EspnError:
+            nfl_year = None
+        if league_year and nfl_year and league_year < nfl_year:
+            await interaction.followup.send(
+                f"That is your **{league_year}** league, and the NFL is in its **{nfl_year}** season. Sleeper gives "
+                f"each season's league a new ID. Open the {nfl_year} league in Sleeper and use the number from its "
+                "web address."
+            )
+            return
+
         mine = channel.permissions_for(interaction.guild.me)
         if not (mine.view_channel and mine.send_messages and mine.embed_links):
             await interaction.followup.send(
@@ -57,6 +73,7 @@ class Setup(commands.Cog):
         for key, value in (
             ("league_id", league_id),
             ("league_name", league.get("name", "")),
+            ("league_season", league_year or ""),
             ("channel_id", channel.id),
             ("commissioner_id", interaction.user.id),
         ):
@@ -65,7 +82,7 @@ class Setup(commands.Cog):
         teams = await self._league_teams()
         linked = {member["roster_id"] for member in await self.bot.db.members()}
         await interaction.followup.send(
-            f"Connected to **{league.get('name', 'your league')}** ({len(teams)} teams). I will post in "
+            f"Connected to **{league.get('name', 'your league')}** ({league_year} season, {len(teams)} teams). I will post in "
             f"{channel.mention}, and you are the commissioner.\n"
             f"{len(linked & {team['roster_id'] for team in teams})} of {len(teams)} teams are linked to a Discord "
             "member. Link each one with `/link`, then check with `/members`.\n"

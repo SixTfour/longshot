@@ -22,7 +22,15 @@ It never places a bet or moves money. The commissioner still places the parlay a
 
 A parlay is dead as soon as one leg misses. That miss is announced, and then the parlay goes quiet: its remaining legs are still graded, but nothing is posted until the last game in its window ends. Then one final update lists every leg's status. `/slip` shows the current state at any time.
 
-Only games that kick off after a parlay's deadline can be picked for it. With the default Saturday 9:00 PM deadline that means Sunday's and Monday's games. The same limit applies to the commissioner's `/pickfor`. The cycle runs for the 18 weeks of the regular season.
+Only games that kick off after a parlay's deadline can be picked for it. With the default Saturday 9:00 PM deadline that means Sunday's and Monday's games. The same limit applies to the commissioner's `/pickfor`. The cycle runs for the regular season only.
+
+### Outside the regular season
+
+Longshot posts nothing in the preseason, the playoffs or the offseason. It reads the regular season's start and end dates from ESPN's calendar, and there is no live week outside them, so nothing is announced. If the bot is restarted in the offseason with a parlay left unfinished, it settles that parlay's records without posting. Commands still answer when someone uses them.
+
+### A new season
+
+Sleeper gives a renewed league a new ID each season. Before using any scores, Longshot checks that the connected league belongs to the season being played. If it does not, it does not name a lowest scorer from it: it opens picks as usual, says why in the announcement, and messages the commissioner to run `/setup` with the new league ID. `/setup` also refuses a league from an earlier season. After fixing it, `/admin run` with the `announce` step posts the lowest scorer.
 
 ### Thanksgiving week
 

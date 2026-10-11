@@ -18,7 +18,7 @@ from .clients.sleeper import SleeperError
 from .db import iso, parse_iso
 from .domain.cards import MAIN, card_scope, card_title, split_week
 from .domain.grading import LOST, PENDING, REVIEW, VOID, WON, parlay_status
-from .domain.loser import lowest_scorers
+from .domain.loser import league_season, lowest_scorers
 from .domain.odds_math import american_to_decimal, format_american, format_money, total_return
 from .domain.schedule import stamp
 from .nfl import Parlay, WeekPlan
@@ -48,6 +48,18 @@ async def _team_text(bot: Longshot, team: dict[str, Any]) -> str:
     return f"**{team['team_name']}** ({render.mention(member['discord_id'])})" if member else f"**{team['team_name']}**"
 
 
+async def _warn_stale_league(bot: Longshot, league_year: int, season: int) -> None:
+    """Tell the commissioner, once a season, that the connected Sleeper league is from another year."""
+    if await bot.db.get_state("stale_league_warned") == str(season):
+        return
+    await bot.db.set_state("stale_league_warned", season)
+    await bot.tell_commissioner(
+        f"⚠️ Longshot is connected to your **{league_year}** Sleeper league, but the NFL is in its **{season}** "
+        "season. Sleeper gives each season's league a new ID, so I am not using its scores. Run `/setup` with "
+        "this season's league ID."
+    )
+
+
 async def announce(bot: Longshot, plan: WeekPlan, now: datetime, *, force: bool = False) -> bool:
     """Post last week's lowest scorer and open picks for each of the week's parlays."""
     season, week = plan.season, plan.week
@@ -64,16 +76,29 @@ async def announce(bot: Longshot, plan: WeekPlan, now: datetime, *, force: bool 
     pings: list[int] = []
     payer = "the lowest scorer"
 
-    if week == 1:
-        lines.append("It is Week 1, so there is no lowest scorer yet.")
-    else:
-        try:
+    # Sleeper gives a renewed league a new ID each season. Scores from a league
+    # that belongs to another season are last year's, so they are never used.
+    try:
+        league_year = league_season(await bot.sleeper.league(league_id))
+        stale = league_year is not None and league_year != season
+        if week > 1 and not stale:
             teams = {team["roster_id"]: team for team in await bot.sleeper.teams(league_id)}
             low = lowest_scorers(await bot.sleeper.matchups(league_id, week - 1))
-        except SleeperError as error:
-            log.warning("Could not read Week %s scores from Sleeper: %s", week - 1, error)
-            return False
+    except SleeperError as error:
+        log.warning("Could not read the league from Sleeper: %s", error)
+        return False
+    if stale:
+        await _warn_stale_league(bot, league_year, season)
 
+    if week == 1:
+        lines.append("It is Week 1, so there is no lowest scorer yet.")
+    elif stale:
+        lines.append(
+            f"I could not read Week {week - 1}'s scores: the connected Sleeper league is from the {league_year} "
+            f"season, not {season}. Commissioner: run `/setup` with this season's league ID, then `/admin run` "
+            "with the `announce` step."
+        )
+    else:
         tied = [teams[roster] for roster in (low[1] if low else []) if roster in teams]
         if low is None or not tied:
             lines.append(f"Sleeper has no scores for Week {week - 1}. Commissioner: set who pays with `/admin loser`.")
@@ -181,8 +206,13 @@ async def remind(bot: Longshot, parlay: Parlay, now: datetime, *, force: bool = 
     return True
 
 
-async def close_picks(bot: Longshot, parlay: Parlay, now: datetime, *, force: bool = False) -> bool:
-    """At the deadline: record no-shows and post the slip. No bet is ever chosen for anyone."""
+async def close_picks(
+    bot: Longshot, parlay: Parlay, now: datetime, *, force: bool = False, quiet: bool = False
+) -> bool:
+    """At the deadline: record no-shows and post the slip. No bet is ever chosen for anyone.
+
+    quiet records the close without posting, for catching up outside the regular season.
+    """
     row = await bot.db.parlay(*parlay.key)
     if row is None or not row["announced_at"]:
         return False
@@ -190,8 +220,8 @@ async def close_picks(bot: Longshot, parlay: Parlay, now: datetime, *, force: bo
         return False
     if now < parlay.times.deadline_at and not force:
         return False
-    channel = await bot.league_channel()
-    if channel is None:
+    channel = None if quiet else await bot.league_channel()
+    if channel is None and not quiet:
         return False
 
     missing = await missing_members(bot, *parlay.key)
@@ -201,6 +231,8 @@ async def close_picks(bot: Longshot, parlay: Parlay, now: datetime, *, force: bo
         *parlay.key, closed_at=iso(now), deadline_at=iso(parlay.times.deadline_at), skipped=0
     )
 
+    if channel is None:
+        return True
     picks = await bot.db.parlay_picks(*parlay.key)
     row = await bot.db.parlay(*parlay.key)
     stake = row["stake"] or await bot.settings.stake()
@@ -232,12 +264,15 @@ async def window_closed(bot: Longshot, row: dict[str, Any]) -> bool:
     return bool(games) and all(game.over for game in games)
 
 
-async def recap(bot: Longshot, season: int, week: int, card: str, *, force: bool = False) -> bool:
+async def recap(
+    bot: Longshot, season: int, week: int, card: str, *, force: bool = False, quiet: bool = False
+) -> bool:
     """Post the parlay's final update, with every leg's status, and record the result.
 
     A parlay that wins is announced as soon as its last leg lands. A parlay that
     died goes quiet after the miss, and gets this one final update when the last
-    game in its window ends.
+    game in its window ends. quiet records the result without posting, for
+    catching up outside the regular season.
     """
     row = await bot.db.parlay(season, week, card)
     if row is None or not row["closed_at"]:
@@ -285,7 +320,7 @@ async def recap(bot: Longshot, season: int, week: int, card: str, *, force: bool
         headline = f"**{title} parlay** (not every leg is settled yet)"
 
     await bot.db.update_parlay(season, week, card, result=status, payout=payout, recap_at=now)
-    channel = await bot.league_channel()
+    channel = None if quiet else await bot.league_channel()
     if channel is not None:
         row = await bot.db.parlay(season, week, card)
         await channel.send(

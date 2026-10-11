@@ -118,15 +118,26 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Commission
         now = utcnow()
         channel = await bot.league_channel()
         league = await bot.db.get_state("league_name")
+        league_year = await bot.db.get_state("league_season")
+        week_now = await bot.nfl.regular_week(now)
+        nfl_year = await bot.nfl.season()
+        named = f"{league} ({league_year} season)" if league and league_year else league
         lines = [
-            f"**League:** {league or 'not connected (run `/setup`)'}",
+            f"**League:** {named or 'not connected (run `/setup`)'}",
             f"**Channel:** {channel.mention if channel else 'not set or not reachable'}",
             f"**Members linked:** {len(await bot.db.members())}",
             f"**Sportsbook:** {await bot.settings.sportsbook_name()}",
         ]
+        if league_year and week_now is not None and int(league_year) != nfl_year:
+            lines.append(
+                f"⚠️ That league is from {league_year}, and the NFL is in its {nfl_year} season. Run `/setup` with "
+                "this season's league ID."
+            )
         plan = await bot.nfl.active(now)
-        if plan is None:
-            lines.append("**Week:** none running (outside the regular season, or before the first announcement)")
+        if week_now is None:
+            lines.append("**Season:** not in the regular season, so nothing is being posted")
+        elif plan is None:
+            lines.append("**Week:** waiting for the first announcement of the season")
         else:
             lines.append(f"**Week {plan.week} announcement:** {stamp(plan.announce_at, 'F')}")
             for parlay in plan.parlays:

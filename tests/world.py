@@ -15,7 +15,16 @@ from types import SimpleNamespace
 from conftest import load
 
 from longshot.bot import Longshot
-from longshot.clients.espn import Athlete, Game, Scoreboard, Team, parse_boxscore, parse_game_roster
+from longshot.clients.espn import (
+    Athlete,
+    Game,
+    Scoreboard,
+    SeasonCalendar,
+    Team,
+    parse_boxscore,
+    parse_calendar,
+    parse_game_roster,
+)
 from longshot.clients.odds import OddsApiError
 from longshot.config import SETTING_DEFAULTS, Config
 from longshot.domain.cards import MAIN
@@ -76,10 +85,14 @@ class FakeEspn:
             if game.state != "post":
                 self.set(label, state="post", home=20, away=17)
 
-    async def scoreboard(self, season=None, week=None) -> Scoreboard:
+    async def scoreboard(self, season: int, week: int) -> Scoreboard:
         self.requests += 1
-        games = list(self.games.values()) if week in (None, self.week) else []
-        return Scoreboard(SEASON, 2, self.week if week is None else week, sorted(games, key=lambda g: g.kickoff))
+        games = list(self.games.values()) if (season, week) == (SEASON, self.week) else []
+        return Scoreboard(season, week, sorted(games, key=lambda g: g.kickoff))
+
+    async def calendar(self) -> SeasonCalendar:
+        """ESPN's real 2026 calendar, so the season starts and ends on the real dates."""
+        return parse_calendar(load("espn_calendar_2026.json"))
 
     async def boxscore(self, event_id: str):
         game = next(g for g in self.games.values() if g.espn_id == event_id)
@@ -178,6 +191,10 @@ class FakeOdds:
 class FakeSleeper:
     def __init__(self):
         self.scores = {1: 121.5, 2: 78.32, 3: 99.0}
+        self.season = str(SEASON)  # the season the connected league belongs to
+
+    async def league(self, league_id: str) -> dict:
+        return {"league_id": league_id, "name": "Test League", "season": self.season, "sport": "nfl"}
 
     async def teams(self, league_id: str) -> list[dict]:
         return [

@@ -7,7 +7,7 @@ from longshot.clients.espn import Game, parse_boxscore, parse_game_roster, parse
 
 def test_scoreboard(fixture):
     board = parse_scoreboard(fixture("espn_scoreboard_week4.json"))
-    assert (board.season, board.season_type, board.week) == (2026, 2, 4)
+    assert (board.season, board.week) == (2026, 4)
     assert len(board.games) == 16
     assert board.games == sorted(board.games, key=lambda game: game.kickoff)
 

@@ -1,7 +1,9 @@
 """The NFL schedule and rosters, from ESPN, with caching.
 
-Also answers "which week's parlays are live right now", which ESPN's own week
-pointer cannot: ESPN rolls over on Wednesday, the parlay cycle on Tuesday.
+Also answers "is the regular season on, and which week's parlays are live".
+Both come from the dates in ESPN's season calendar, so the answer is the same
+whatever ESPN's site happens to be showing: outside the regular season there is
+no live week, and so nothing to announce.
 """
 
 from __future__ import annotations
@@ -11,7 +13,7 @@ import logging
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 
-from .clients.espn import REGULAR_SEASON, Athlete, EspnClient, EspnError, Game, Scoreboard
+from .clients.espn import Athlete, EspnClient, EspnError, Game, SeasonCalendar
 from .db import Database, utcnow
 from .domain.cards import MAIN, card_title, split_week
 from .domain.schedule import WeekTimes, week_times
@@ -19,8 +21,8 @@ from .settings import Settings
 
 log = logging.getLogger(__name__)
 
-LAST_WEEK = 18
 SCHEDULE_TTL = timedelta(minutes=30)
+CALENDAR_TTL = timedelta(hours=6)
 ROSTER_TTL = timedelta(hours=24)
 
 
@@ -90,7 +92,7 @@ class Nfl:
         self._espn = espn
         self._db = db
         self._settings = settings
-        self._current: tuple[Scoreboard, datetime] | None = None
+        self._held_calendar: tuple[SeasonCalendar, datetime] | None = None
         self._rosters: dict[str, tuple[list[Athlete], datetime]] = {}  # by team abbreviation
         self._warming = asyncio.Lock()
 
@@ -107,14 +109,18 @@ class Nfl:
         await self._db.cache_put(key, [game.to_json() for game in board.games])
         return board.games
 
-    async def _pointer(self) -> Scoreboard:
-        """ESPN's idea of the current week."""
-        if self._current is None or utcnow() - self._current[1] > SCHEDULE_TTL:
-            self._current = (await self._espn.scoreboard(), utcnow())
-        return self._current[0]
+    async def _calendar(self) -> SeasonCalendar:
+        if self._held_calendar is None or utcnow() - self._held_calendar[1] > CALENDAR_TTL:
+            self._held_calendar = (await self._espn.calendar(), utcnow())
+        return self._held_calendar[0]
 
     async def season(self) -> int:
-        return (await self._pointer()).season
+        """The current season, named by the year it starts in."""
+        return (await self._calendar()).season
+
+    async def regular_week(self, now: datetime) -> int | None:
+        """ESPN's regular-season week at this moment, or None outside the regular season."""
+        return (await self._calendar()).regular_week(now)
 
     async def plan(self, season: int, week: int) -> WeekPlan | None:
         games = await self.games(season, week)
@@ -133,15 +139,20 @@ class Nfl:
         return plan.parlay(card) if plan else None
 
     async def active(self, now: datetime) -> WeekPlan | None:
-        """The latest regular-season week whose announcement time has passed."""
-        pointer = await self._pointer()
-        if pointer.season_type != REGULAR_SEASON:
+        """The latest regular-season week whose announcement time has passed.
+
+        None in the preseason, the playoffs and the offseason.
+        """
+        calendar = await self._calendar()
+        current = calendar.regular_week(now)
+        if current is None:
             return None
         best = None
-        for week in (pointer.week, pointer.week + 1):
-            if not 1 <= week <= LAST_WEEK:
+        # ESPN's week turns over on Wednesday; the parlay week opens on Tuesday, a day ahead of it.
+        for week in (current, current + 1):
+            if week > calendar.last_week:
                 continue
-            plan = await self.plan(pointer.season, week)
+            plan = await self.plan(calendar.season, week)
             if plan and plan.announce_at <= now:
                 best = plan
         return best

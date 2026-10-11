@@ -83,10 +83,11 @@ async def weeks_to_poll(bot: Longshot, now: datetime) -> list[tuple[int, int]]:
     return sorted(wanted)
 
 
-async def track(bot: Longshot, now: datetime) -> None:
+async def track(bot: Longshot, now: datetime, *, quiet: bool = False) -> None:
+    """Grade and report everything live. quiet grades without posting, outside the regular season."""
     for season, week in await weeks_to_poll(bot, now):
         try:
-            await track_week(bot, season, week)
+            await track_week(bot, season, week, quiet=quiet)
         except EspnError as error:
             log.warning("Could not track Week %s: %s", week, error)
 
@@ -125,7 +126,7 @@ async def _grade_game(bot: Longshot, game: Game, legs: list[Pick]) -> list[tuple
     return results
 
 
-async def track_week(bot: Longshot, season: int, week: int) -> None:
+async def track_week(bot: Longshot, season: int, week: int, *, quiet: bool = False) -> None:
     """Fetch the week's live scores once, then grade and report each of its parlays."""
     schedule = await bot.nfl.games(season, week, fresh=True)
     games = {game.espn_id: game for game in schedule}
@@ -151,23 +152,26 @@ async def track_week(bot: Longshot, season: int, week: int) -> None:
                     await bot.db.grade_pick(leg["id"], grade.status, grade.value, grade.note, "auto")
                     settled.append(leg["id"])
 
-        await announce_grades(bot, season, week, card, settled)
-        await post_slates(bot, season, week, card, card_games.get(card, []))
+        await announce_grades(bot, season, week, card, settled, quiet=quiet)
+        await post_slates(bot, season, week, card, card_games.get(card, []), quiet=quiet)
 
 
 def _first_miss(lost: list[Pick]) -> Pick:
     return min(lost, key=lambda pick: (pick["graded_at"] or "", pick["kickoff"], pick["id"]))
 
 
-async def announce_grades(bot: Longshot, season: int, week: int, card: str, pick_ids: list[int]) -> None:
+async def announce_grades(
+    bot: Longshot, season: int, week: int, card: str, pick_ids: list[int], *, quiet: bool = False
+) -> None:
     """Post newly settled legs while the parlay is alive, and announce the miss that kills it.
 
     Called after legs are graded, by the tracker or by the commissioner's /grade.
+    quiet keeps the records up to date without posting or messaging anyone.
     """
     row = await bot.db.parlay(season, week, card)
     if row is None:
         return
-    channel = await bot.league_channel()
+    channel = None if quiet else await bot.league_channel()
     title = card_title(week, card)
     picks = {pick["id"]: pick for pick in await bot.db.parlay_picks(season, week, card)}
     fresh = [picks[pick_id] for pick_id in pick_ids if pick_id in picks]
@@ -180,7 +184,7 @@ async def announce_grades(bot: Longshot, season: int, week: int, card: str, pick
         if killer is None or killer["status"] != LOST:
             await bot.db.update_parlay(season, week, card, killer_pick_id=_first_miss(lost)["id"])
         unruled = [pick for pick in fresh if pick["status"] == REVIEW]
-        if unruled:
+        if unruled and not quiet:
             # The parlay is over, but the leg still needs settling for the stats.
             legs = "; ".join(f"{render.mention(pick['discord_id'])}: {render.leg(pick)}" for pick in unruled)
             await bot.tell_commissioner(
@@ -237,7 +241,9 @@ def _up_next(picks: list[Pick], slates: list[Slate], after: Slate) -> str | None
     return None
 
 
-async def post_slates(bot: Longshot, season: int, week: int, card: str, games: list[Game]) -> None:
+async def post_slates(
+    bot: Longshot, season: int, week: int, card: str, games: list[Game], *, quiet: bool = False
+) -> None:
     """After a slate's last game ends, post how its legs did and where the parlay stands.
 
     games are the parlay's own games, with live state. Nothing is posted for a
@@ -251,7 +257,7 @@ async def post_slates(bot: Longshot, season: int, week: int, card: str, games: l
     by_id = {game.espn_id: game for game in games}
     slates = build_slates(games)
     picks = await bot.db.parlay_picks(season, week, card)
-    channel = await bot.league_channel()
+    channel = None if quiet else await bot.league_channel()
     changed = False
 
     for slate in slates:
