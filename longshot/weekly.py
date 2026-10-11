@@ -15,8 +15,8 @@ import discord
 
 from . import render
 from .clients.sleeper import SleeperError
-from .db import iso
-from .domain.cards import MAIN, card_scope, card_title
+from .db import iso, parse_iso
+from .domain.cards import MAIN, card_scope, card_title, split_week
 from .domain.grading import LOST, PENDING, REVIEW, VOID, WON, parlay_status
 from .domain.loser import lowest_scorers
 from .domain.odds_math import american_to_decimal, format_american, format_money, total_return
@@ -218,11 +218,24 @@ async def close_picks(bot: Longshot, parlay: Parlay, now: datetime, *, force: bo
     return True
 
 
-async def recap(bot: Longshot, season: int, week: int, card: str, *, force: bool = False) -> bool:
-    """Once every leg is settled: record the result, and post it unless the parlay lost.
+async def window_closed(bot: Longshot, row: dict[str, Any]) -> bool:
+    """Whether every game in a parlay's window (its games after its deadline) has finished."""
+    schedule = await bot.nfl.games(row["season"], row["week"])
+    deadline = parse_iso(row["deadline_at"]) if row["deadline_at"] else None
+    games = [
+        game
+        for game in split_week(schedule).get(row["card"], [])
+        if game.time_set and (deadline is None or game.kickoff >= deadline)
+    ]
+    return bool(games) and all(game.over for game in games)
 
-    A lost parlay was already announced as dead when its first leg missed, and
-    nothing more is posted about it. /slip still shows how it finished.
+
+async def recap(bot: Longshot, season: int, week: int, card: str, *, force: bool = False) -> bool:
+    """Post the parlay's final update, with every leg's status, and record the result.
+
+    A parlay that wins is announced as soon as its last leg lands. A parlay that
+    died goes quiet after the miss, and gets this one final update when the last
+    game in its window ends.
     """
     row = await bot.db.parlay(season, week, card)
     if row is None or not row["closed_at"]:
@@ -239,13 +252,13 @@ async def recap(bot: Longshot, season: int, week: int, card: str, *, force: bool
         await bot.db.update_parlay(season, week, card, result=VOID, recap_at=now)
         return False
 
-    if status == LOST:
-        await bot.db.update_parlay(season, week, card, result=LOST, payout=None, recap_at=now)
-        return True
+    if status == LOST and not force and not await window_closed(bot, row):
+        return False
 
     title = card_title(week, card)
     stake = row["stake"] or await bot.settings.stake()
     hits = sum(1 for pick in picks if pick["status"] == WON)
+    misses = [pick for pick in picks if pick["status"] == LOST]
     payout = None
     if status == WON:
         guess = render.estimate(picks, stake)
@@ -257,6 +270,12 @@ async def recap(bot: Longshot, season: int, week: int, card: str, *, force: bool
             + (f" at {format_american(row['placed_odds'])}" if row["placed_odds"] else " (estimated; `/placed` was never run)")
             + f". Split {winners} ways, that is **{format_money(round(payout / winners, 2))}** each."
         )
+    elif status == LOST:
+        headline = f"**{title} parlay: final.** {hits} of {len(picks)} legs hit."
+        if len(misses) == 1:
+            headline += f" It would have cashed without {render.mention(misses[0]['discord_id'])}'s leg."
+        else:
+            headline += f" {len(misses)} legs missed."
     elif status == VOID:
         headline = f"**{title} parlay: void.** Every leg was a push or void, so the stake comes back."
         payout = stake

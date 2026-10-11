@@ -1,8 +1,9 @@
 """Live leg tracking: grade legs as games play out, and post an update after each slate.
 
 A parlay is dead as soon as one leg misses. That miss is announced, and after
-it nothing more is posted about the parlay: its other legs are still graded,
-so the stats stay complete, but silently.
+it the parlay goes quiet: its other legs are still graded, silently, and one
+final update with every leg's status is posted when the last game in its
+window ends (see weekly.recap).
 """
 
 from __future__ import annotations
@@ -44,10 +45,12 @@ _HEADLINE = {WON: "Leg hit", LOST: "Leg missed", PUSH: "Leg dropped", VOID: "Leg
 
 
 async def weeks_to_poll(bot: Longshot, now: datetime) -> list[tuple[int, int]]:
-    """Weeks with something live: an unsettled leg whose game has started, or a started slate not yet reported.
+    """Weeks with something live.
 
-    Kickoff times come from the schedule, not from the pick, so a game the NFL
-    moves is followed.
+    That is an unsettled leg whose game has started, a started slate not yet
+    reported, or a dead parlay waiting on a game in progress for its final
+    update. Kickoff times come from the schedule, not from the pick, so a game
+    the NFL moves is followed.
     """
     wanted: set[tuple[int, int]] = set()
     for row in await bot.db.parlays():
@@ -67,11 +70,16 @@ async def weeks_to_poll(bot: Longshot, now: datetime) -> list[tuple[int, int]]:
             if game and pick["status"] == PENDING and game.kickoff <= now:
                 wanted.add((season, week))
 
+        card_games = split_week(schedule).get(card, [])
         posted = set(json.loads(row["slates_posted"]))
         with_legs = {pick["espn_event_id"] for pick in picks}
-        for slate in build_slates(split_week(schedule).get(card, [])):
+        for slate in build_slates(card_games):
             if slate.key not in posted and slate.start <= now and with_legs & set(slate.game_ids):
                 wanted.add((season, week))
+
+        dead = any(pick["status"] == LOST for pick in picks)
+        if dead and any(game.time_set and game.kickoff <= now and not game.over for game in card_games):
+            wanted.add((season, week))
     return sorted(wanted)
 
 

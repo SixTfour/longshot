@@ -202,20 +202,44 @@ def test_a_missed_leg_kills_the_parlay(tmp_path, monkeypatch):
         killer = (await world.week())["killer_pick_id"]
         assert (await world.bot.db.pick(killer))["discord_id"] == 2
 
-        # From here on the channel hears nothing about it: not the other legs, not the slates, not a recap.
+        # While games remain, the channel hears nothing more: not the other legs, not the slates.
         channel.clear()
         world.espn.set(BUCS_GAME, state="in", home=14, away=10)
         await at(SUN_EARLY_LIVE)
         world.espn.set(BUCS_GAME, state="post", home=24, away=16)
         await at(SUN_EARLY_DONE)
-        world.espn.finish_everything()
-        await at(et(2026, 10, 20, 9, 0))
+        assert channel.sent == []
+        # The other legs were still graded, silently, though every leg is now settled.
+        assert await world.statuses() == {1: "won", 2: "lost", 3: "won"}
+        assert (await world.week())["recap_at"] is None
+
+        # Monday night's game is the last in the window. Nothing until it ends...
+        last = "WSH @ SF"
+        for label in world.espn.games:
+            if label != last:
+                world.espn.set(label, state="post", home=20, away=17)
+        world.espn.set(last, state="in", home=3, away=0)
+        await at(et(2026, 10, 19, 21, 0))
         assert channel.sent == []
 
-        # The other legs were still graded, so the stats are complete, and the result is on record.
-        assert await world.statuses() == {1: "won", 2: "lost", 3: "won"}
+        # ...then one final update with every leg's status.
+        world.espn.set(last, state="post", home=23, away=20)
+        await at(et(2026, 10, 19, 23, 30))
+        assert len(channel.sent) == 1
+        final = channel.sent[0]
+        assert final.content == (
+            "**Week 6 parlay: final.** 2 of 3 legs hit. It would have cashed without <@2>'s leg."
+        )
+        assert final.embed.title == "Week 6 final slip"
+        assert final.embed.description.splitlines() == [
+            "❌ <@2> · **DEN -2.5** (-110)",
+            "✅ <@1> · **Bucky Irving 150+ rushing yards** (+320) · *finished with 165*",
+            "✅ <@3> · **Bucky Irving anytime TD** (-130)",
+        ]
         week = await world.week()
         assert (week["result"], week["payout"], bool(week["recap_at"])) == ("lost", None, True)
+        await at(et(2026, 10, 20, 9, 0))
+        assert len(channel.sent) == 1  # it is posted once
 
     play(tmp_path, monkeypatch, scenario)
 
@@ -239,6 +263,10 @@ def test_a_second_miss_on_a_dead_parlay_is_silent(tmp_path, monkeypatch):
         # The first miss stays on record as the one that killed it.
         killer = (await world.week())["killer_pick_id"]
         assert (await world.bot.db.pick(killer))["discord_id"] == 2
+
+        world.espn.finish_everything()
+        await at(et(2026, 10, 19, 23, 30))
+        assert channel.texts == ["**Week 6 parlay: final.** 0 of 2 legs hit. 2 legs missed."]
 
     play(tmp_path, monkeypatch, scenario)
 

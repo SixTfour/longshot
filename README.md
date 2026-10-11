@@ -17,9 +17,10 @@ It never places a bet or moves money. The commissioner still places the parlay a
 | After that | The commissioner places the parlay and records the real odds with `/placed`. |
 | During games | Each leg is posted as it is settled. The first miss kills the parlay and is called out. |
 | After each slate | While the parlay is alive: a summary of that slate's legs and what is next. |
-| After the last leg | If every leg hit: the result and the payout split. |
+| After the last leg | If every leg hit: the result, every leg's status and the payout split. |
+| After the last game | If the parlay died: one final update with every leg's status. |
 
-A parlay is dead as soon as one leg misses. That miss is announced, and nothing more is posted about that parlay afterwards. Its remaining legs are still graded for the stats, and `/slip` shows how it finished.
+A parlay is dead as soon as one leg misses. That miss is announced, and then the parlay goes quiet: its remaining legs are still graded, but nothing is posted until the last game in its window ends. Then one final update lists every leg's status. `/slip` shows the current state at any time.
 
 Only games that kick off after a parlay's deadline can be picked for it. With the default Saturday 9:00 PM deadline that means Sunday's and Monday's games. The same limit applies to the commissioner's `/pickfor`. The cycle runs for the 18 weeks of the regular season.
 
