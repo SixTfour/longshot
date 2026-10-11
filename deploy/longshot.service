@@ -23,6 +23,9 @@ ExecStart=/home/pi/longshot/.venv/bin/python -m longshot
 Environment=PYTHONUNBUFFERED=1
 Restart=always
 RestartSec=15
+# Exit code 2 means something in .env or in Discord needs fixing by hand. Restarting would not
+# help, so the service stays stopped: read the reason with journalctl, fix it, then start it again.
+RestartPreventExitStatus=2
 
 # The bot only needs its own folder and its database folder.
 NoNewPrivileges=true

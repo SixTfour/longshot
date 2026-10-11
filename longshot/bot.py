@@ -13,7 +13,7 @@ from discord.ext import commands
 from .clients.espn import EspnClient, EspnError
 from .clients.odds import OddsApiError
 from .clients.sleeper import SleeperClient, SleeperError
-from .config import Config
+from .config import Config, ConfigError
 from .db import Database, utcnow
 from .domain.fantasy import FantasySeason, fantasy_season
 from .linebook import LineBook, NoCredits
@@ -71,14 +71,31 @@ class Longshot(commands.Bot):
 
     async def setup_hook(self) -> None:
         await self.wire()
-        if self.config.guild_id:
-            # Guild commands appear instantly, which suits testing.
-            guild = discord.Object(self.config.guild_id)
-            self.tree.copy_global_to(guild=guild)
-            await self.tree.sync(guild=guild)
-        else:
-            await self.tree.sync()
+        await self.sync_commands()
         self.scheduler.start()
+
+    async def sync_commands(self) -> None:
+        """Register the slash commands with Discord: in one server if GUILD_ID is set, otherwise everywhere."""
+        guild_id = self.config.guild_id
+        if not guild_id:
+            await self.tree.sync()
+            return
+        # Commands registered to a single server appear at once, which suits testing.
+        guild = discord.Object(guild_id)
+        self.tree.copy_global_to(guild=guild)
+        try:
+            await self.tree.sync(guild=guild)
+        except discord.Forbidden:
+            raise ConfigError(
+                f"Discord would not let the bot add its commands to the server in GUILD_ID ({guild_id}). "
+                "Check these in order:\n"
+                "  1. The bot has been invited to that server.\n"
+                "  2. It was invited with a link that includes both scopes, bot and applications.commands "
+                "(the link is in the README). If not, open that link again; there is no need to remove the bot first.\n"
+                "  3. GUILD_ID is the server's ID, not a channel's, a member's or the application's. "
+                "In Discord: Settings > Advanced > Developer Mode, then right-click the server name > Copy Server ID.\n"
+                "Or leave GUILD_ID empty in .env: the commands are then registered everywhere the bot is invited."
+            ) from None
 
     async def on_ready(self) -> None:
         log.info("Logged in as %s. Database: %s", self.user, self.config.db_path)

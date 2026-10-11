@@ -150,6 +150,18 @@ cp .env.example .env
 
 Run only one copy of the bot at a time. Two copies with the same token would both post.
 
+### If it will not start
+
+| Message | What to do |
+|---|---|
+| `Missing DISCORD_TOKEN` or `ODDS_API_KEY` | Fill them in `.env`, in the folder you start the bot from. |
+| `Discord rejected DISCORD_TOKEN` | Reset the token in the Developer Portal and paste the new one into `.env`. |
+| `Discord would not let the bot add its commands to the server in GUILD_ID` | The bot is not in that server, was invited without the `applications.commands` scope, or `GUILD_ID` is not the server's ID. Open the invite link above again, and check the ID (Developer Mode on, right-click the server name, Copy Server ID). Or leave `GUILD_ID` empty. |
+
+The `PyNaCl is not installed` and `davey is not installed` warnings at startup are about voice chat, which Longshot does not use. They can be ignored.
+
+Under systemd the service does not restart after one of these, since restarting would not fix it. After fixing the cause: `sudo systemctl start longshot`.
+
 ### Running on a Raspberry Pi
 
 Longshot is light enough for a Pi 2B. It needs Raspberry Pi OS Bookworm or later (Python 3.11+); the 32-bit version is fine.
