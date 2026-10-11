@@ -18,7 +18,7 @@ from .clients.sleeper import SleeperError
 from .db import iso, parse_iso
 from .domain.cards import MAIN, card_scope, card_title, split_week
 from .domain.grading import LOST, PENDING, REVIEW, VOID, WON, parlay_status
-from .domain.loser import league_season, lowest_scorers
+from .domain.loser import lowest_scorers
 from .domain.odds_math import american_to_decimal, format_american, format_money, total_return
 from .domain.schedule import stamp
 from .nfl import Parlay, WeekPlan
@@ -48,15 +48,16 @@ async def _team_text(bot: Longshot, team: dict[str, Any]) -> str:
     return f"**{team['team_name']}** ({render.mention(member['discord_id'])})" if member else f"**{team['team_name']}**"
 
 
-async def _warn_stale_league(bot: Longshot, league_year: int, season: int) -> None:
-    """Tell the commissioner, once a season, that the connected Sleeper league is from another year."""
-    if await bot.db.get_state("stale_league_warned") == str(season):
+async def warn_stale_league(bot: Longshot, league_year: int, season: int, week: int) -> None:
+    """Tell the commissioner, once a week until it is fixed, that the connected league is from another year."""
+    mark = f"{season}:{week}"
+    if await bot.db.get_state("stale_league_warned") == mark:
         return
-    await bot.db.set_state("stale_league_warned", season)
+    await bot.db.set_state("stale_league_warned", mark)
     await bot.tell_commissioner(
         f"⚠️ Longshot is connected to your **{league_year}** Sleeper league, but the NFL is in its **{season}** "
-        "season. Sleeper gives each season's league a new ID, so I am not using its scores. Run `/setup` with "
-        "this season's league ID."
+        "season. Sleeper gives each season's league a new ID. Until you run `/setup` with this season's league "
+        "ID, no parlay will run."
     )
 
 
@@ -79,19 +80,18 @@ async def announce(bot: Longshot, plan: WeekPlan, now: datetime, *, force: bool 
     # Sleeper gives a renewed league a new ID each season. Scores from a league
     # that belongs to another season are last year's, so they are never used.
     try:
-        league_year = league_season(await bot.sleeper.league(league_id))
+        fantasy = await bot.fantasy()
+        league_year = fantasy.season
         stale = league_year is not None and league_year != season
-        if week > 1 and not stale:
+        first_week = week <= fantasy.start_week  # no fantasy week has been played before it
+        if not first_week and not stale:
             teams = {team["roster_id"]: team for team in await bot.sleeper.teams(league_id)}
             low = lowest_scorers(await bot.sleeper.matchups(league_id, week - 1))
     except SleeperError as error:
         log.warning("Could not read the league from Sleeper: %s", error)
         return False
-    if stale:
-        await _warn_stale_league(bot, league_year, season)
-
-    if week == 1:
-        lines.append("It is Week 1, so there is no lowest scorer yet.")
+    if first_week:
+        lines.append("It is the first week of the fantasy season, so there is no lowest scorer yet.")
     elif stale:
         lines.append(
             f"I could not read Week {week - 1}'s scores: the connected Sleeper league is from the {league_year} "

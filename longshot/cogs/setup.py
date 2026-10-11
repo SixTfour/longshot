@@ -11,7 +11,7 @@ from discord.ext import commands
 from .. import render
 from ..bot import Longshot, commissioner_only
 from ..clients.espn import EspnError
-from ..domain.loser import league_season
+from ..domain.fantasy import league_season
 
 TEAMS_TTL = 300  # seconds
 
@@ -79,6 +79,8 @@ class Setup(commands.Cog):
         ):
             await self.bot.db.set_state(key, value)
         self._teams = None
+        self.bot.forget_league()
+        fantasy = await self.bot.fantasy()
         teams = await self._league_teams()
         linked = {member["roster_id"] for member in await self.bot.db.members()}
         await interaction.followup.send(
@@ -86,6 +88,7 @@ class Setup(commands.Cog):
             f"{channel.mention}, and you are the commissioner.\n"
             f"{len(linked & {team['roster_id'] for team in teams})} of {len(teams)} teams are linked to a Discord "
             "member. Link each one with `/link`, then check with `/members`.\n"
+            f"Sleeper has the fantasy season as {fantasy.span}; parlays run for those weeks only.\n"
             "Settings such as the deadline and sportsbook are under `/config`."
         )
 

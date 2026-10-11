@@ -134,10 +134,15 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Commission
                 "this season's league ID."
             )
         plan = await bot.nfl.active(now)
+        fantasy = await bot.fantasy()
+        if fantasy is not None:
+            lines.append(f"**Fantasy season (from Sleeper):** {fantasy.span} · league status `{fantasy.status}`")
         if week_now is None:
-            lines.append("**Season:** not in the regular season, so nothing is being posted")
+            lines.append("**Season:** not in the NFL regular season, so nothing is being posted")
         elif plan is None:
             lines.append("**Week:** waiting for the first announcement of the season")
+        elif fantasy is not None and not fantasy.runs(plan.week):
+            lines.append(f"**Week {plan.week}:** outside the fantasy season, so no parlay is running")
         else:
             lines.append(f"**Week {plan.week} announcement:** {stamp(plan.announce_at, 'F')}")
             for parlay in plan.parlays:

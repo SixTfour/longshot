@@ -192,9 +192,19 @@ class FakeSleeper:
     def __init__(self):
         self.scores = {1: 121.5, 2: 78.32, 3: 99.0}
         self.season = str(SEASON)  # the season the connected league belongs to
+        self.status = "in_season"
+        # A typical league: 14 weeks, then three playoff rounds, ending in Week 17.
+        self.settings = {"start_week": 1, "playoff_week_start": 15, "playoff_teams": 6, "playoff_round_type": 0}
+        self.bracket = [{"r": 1, "m": 1}, {"r": 1, "m": 2}, {"r": 2, "m": 3}, {"r": 2, "m": 4}, {"r": 3, "m": 5}]
 
     async def league(self, league_id: str) -> dict:
-        return {"league_id": league_id, "name": "Test League", "season": self.season, "sport": "nfl"}
+        return {
+            "league_id": league_id, "name": "Test League", "season": self.season, "sport": "nfl",
+            "status": self.status, "settings": dict(self.settings),
+        }
+
+    async def winners_bracket(self, league_id: str) -> list[dict]:
+        return list(self.bracket)
 
     async def teams(self, league_id: str) -> list[dict]:
         return [

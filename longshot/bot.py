@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime, timedelta
 
 import aiohttp
 import discord
@@ -13,7 +14,8 @@ from .clients.espn import EspnClient, EspnError
 from .clients.odds import OddsApiError
 from .clients.sleeper import SleeperClient, SleeperError
 from .config import Config
-from .db import Database
+from .db import Database, utcnow
+from .domain.fantasy import FantasySeason, fantasy_season
 from .linebook import LineBook, NoCredits
 from .nfl import Nfl
 from .scheduler import Scheduler
@@ -23,6 +25,7 @@ from .views import PaidButton
 log = logging.getLogger(__name__)
 
 COGS = ("setup", "config", "picks", "slip", "ledger", "stats", "admin")
+FANTASY_TTL = timedelta(hours=6)  # how long the league's season details are reused
 
 
 class NotCommissioner(app_commands.CheckFailure):
@@ -49,6 +52,7 @@ class Longshot(commands.Bot):
         self.settings = Settings(self.db, config.setting_defaults)
         self.scheduler = Scheduler(self)
         self.web: aiohttp.ClientSession | None = None
+        self._fantasy: tuple[str, FantasySeason, datetime] | None = None
 
     async def wire(self) -> None:
         """Open the database, build the clients and register every command. Does not touch Discord."""
@@ -90,6 +94,22 @@ class Longshot(commands.Bot):
 
     async def league_id(self) -> str | None:
         return await self.db.get_state("league_id")
+
+    async def fantasy(self) -> FantasySeason | None:
+        """When the connected league's fantasy season runs, from Sleeper. None until /setup has been run."""
+        league_id = await self.league_id()
+        if league_id is None:
+            return None
+        held = self._fantasy
+        if held is None or held[0] != league_id or utcnow() - held[2] > FANTASY_TTL:
+            league = await self.sleeper.league(league_id)
+            bracket = await self.sleeper.winners_bracket(league_id)
+            self._fantasy = held = (league_id, fantasy_season(league, bracket), utcnow())
+        return held[1]
+
+    def forget_league(self) -> None:
+        """Drop what is remembered about the league, after /setup connects a different one."""
+        self._fantasy = None
 
     async def league_channel(self) -> discord.abc.Messageable | None:
         channel_id = await self.db.get_state("channel_id")

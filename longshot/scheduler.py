@@ -4,9 +4,10 @@ Nothing here remembers what it did: every step looks at the database to see
 whether it has already run. So a bot that was switched off simply catches up
 the next time it starts.
 
-Nothing is posted outside the regular season. There is no live week then, so
-nothing is announced; and if the bot comes back after a long break with a
-parlay left unfinished, it settles that parlay's records without posting.
+The bot only runs during the fantasy season: the weeks the Sleeper league says
+its season covers, within the NFL regular season. Outside them no parlay is
+announced; and if the bot comes back after a long break with a parlay left
+unfinished, it settles that parlay's records without posting.
 """
 
 from __future__ import annotations
@@ -19,6 +20,7 @@ from discord.ext import tasks
 
 from . import tracking, weekly
 from .clients.espn import EspnError
+from .clients.sleeper import SleeperError
 from .db import utcnow
 
 if TYPE_CHECKING:
@@ -45,7 +47,7 @@ class Scheduler:
     async def tick(self) -> None:
         try:
             await self.run_due(utcnow())
-        except EspnError as error:
+        except (EspnError, SleeperError) as error:
             log.warning("Skipping this tick: %s", error)
         except Exception:
             log.exception("The scheduler tick failed")
@@ -59,8 +61,21 @@ class Scheduler:
         if await bot.league_id() is None:
             return  # /setup has not been run yet
 
-        quiet = await bot.nfl.regular_week(now) is None  # preseason, playoffs or offseason
+        fantasy = await bot.fantasy()
+        week_now = await bot.nfl.regular_week(now)
         plan = await bot.nfl.active(now)
+
+        # A league from another season says nothing about this one: nothing runs until /setup is redone.
+        stale = fantasy.season is not None and fantasy.season != await bot.nfl.season()
+        if stale and plan is not None:
+            await weekly.warn_stale_league(bot, fantasy.season, plan.season, plan.week)
+        if plan is not None and (stale or not fantasy.runs(plan.week)):
+            plan = None  # the fantasy season has not started, or is over
+
+        in_season = not stale and (
+            (week_now is not None and fantasy.runs(week_now)) or plan is not None
+        )
+        quiet = not in_season
         if plan is not None:
             await bot.nfl.warm(plan.games)  # rosters for /pick; a no-op once loaded
             await weekly.announce(bot, plan, now)

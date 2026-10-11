@@ -1,0 +1,49 @@
+{
+ "league": {
+  "league_id": "289646328504385536",
+  "name": "Sleeper Friends League",
+  "season": "2018",
+  "status": "complete",
+  "sport": "nfl",
+  "settings": {
+   "start_week": 2,
+   "playoff_week_start": 14,
+   "playoff_teams": 6,
+   "playoff_round_type": null,
+   "playoff_type": 0,
+   "last_scored_leg": 16,
+   "leg": 16,
+   "num_teams": 12
+  }
+ },
+ "winners_bracket": [
+  {
+   "r": 1,
+   "m": 1
+  },
+  {
+   "r": 1,
+   "m": 2
+  },
+  {
+   "r": 2,
+   "m": 3
+  },
+  {
+   "r": 2,
+   "m": 4
+  },
+  {
+   "r": 2,
+   "m": 5
+  },
+  {
+   "r": 3,
+   "m": 6
+  },
+  {
+   "r": 3,
+   "m": 7
+  }
+ ]
+}

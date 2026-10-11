@@ -6,14 +6,6 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 
-def league_season(league: Mapping[str, Any]) -> int | None:
-    """The season a Sleeper league belongs to, or None if it does not say."""
-    try:
-        return int(league.get("season"))
-    except (TypeError, ValueError):
-        return None
-
-
 def roster_scores(matchups: Iterable[Mapping[str, Any]]) -> dict[int, float]:
     """Points per roster. A commissioner's manual override (custom_points) wins."""
     scores: dict[int, float] = {}

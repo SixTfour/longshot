@@ -11,7 +11,7 @@ from world import BUCS_GAME, SEASON, TNF, WEEK, et
 
 from longshot import weekly
 from longshot.clients.espn import parse_calendar
-from longshot.domain.loser import league_season
+from longshot.domain.fantasy import league_season
 from longshot.domain.odds_math import parlay_decimal, total_return
 
 
@@ -143,23 +143,30 @@ def test_scores_from_last_seasons_league_are_not_used(tmp_path, monkeypatch):
         channel, db = world.channel, world.bot.db
         world.sleeper.season = "2025"  # /setup was never redone for the new season
 
+        # A league from another year says nothing about this season, so no parlay runs.
         await at(TUE_ANNOUNCE)
-        text = channel.last()
-        assert "the connected Sleeper league is from the 2025 season, not 2026" in text
-        assert "run `/setup` with this season's league ID" in text
-        assert "Team 2" not in text and "owes" not in text  # nobody is named from last year's scores
-        assert "Picks are open" in text  # the week still goes ahead
+        await at(TUE_NOON)
+        assert channel.sent == []
         assert await db.debt(SEASON, WEEK) is None
-        assert (await world.week())["loser_roster_id"] is None
+        assert "not open" in await world.pick(1, *IRVING_150)
 
-        # The commissioner is told privately, once.
+        # The commissioner is told privately: once that week, however many times the clock ticks.
         assert len(world.dms[99].sent) == 1
         assert "**2025** Sleeper league" in world.dms[99].last() and "/setup" in world.dms[99].last()
 
-        # After /setup with this season's league, re-running the announcement names the lowest scorer.
-        world.sleeper.season = "2026"
+        # Forcing the announcement by hand still never names anyone from last year's scores.
         plan = await world.bot.nfl.active(TUE_NOON)
         assert await weekly.announce(world.bot, plan, TUE_NOON, force=True)
+        text = channel.last()
+        assert "the connected Sleeper league is from the 2025 season, not 2026" in text
+        assert "Team 2" not in text and "owes" not in text
+        await db.update_parlay(SEASON, WEEK, "main", announced_at=None)
+
+        # After /setup with this season's league, the week runs normally from the next tick.
+        channel.clear()
+        world.sleeper.season = "2026"
+        world.bot.forget_league()  # what /setup does
+        await at(TUE_NOON)
         assert "**Team 2** (<@2>)" in channel.last() and "owes **$10**" in channel.last()
         assert (await db.debt(SEASON, WEEK))["roster_id"] == 2
         assert len(world.dms[99].sent) == 1
