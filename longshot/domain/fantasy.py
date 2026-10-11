@@ -2,6 +2,10 @@
 
 Longshot only operates during the fantasy season: from the league's first
 scoring week to the last week of its playoffs.
+
+It also decides who pays for each week's parlay. Normally that is the lowest
+scorer of the week before. The commissioner pays in the first week, when no
+fantasy week has been played yet, and in every playoff week.
 """
 
 from __future__ import annotations
@@ -25,6 +29,7 @@ class FantasySeason:
     status: str  # Sleeper's: pre_draft, drafting, in_season or complete
     start_week: int
     last_week: int  # the final week of the fantasy playoffs
+    playoff_start: int | None = None  # the first playoff week, if the league says
 
     @property
     def started(self) -> bool:
@@ -33,6 +38,24 @@ class FantasySeason:
     def runs(self, week: int) -> bool:
         """Whether an NFL week is part of this league's fantasy season."""
         return self.started and self.start_week <= week <= self.last_week
+
+    def commissioner_pays(self, week: int) -> str | None:
+        """Why the commissioner, not the lowest scorer, pays for this week's parlay; None if the lowest scorer pays."""
+        if week <= self.start_week:
+            return "it is the first week of the fantasy season"
+        if self.playoff_start is not None and week >= self.playoff_start:
+            return "it is a fantasy playoff week"
+        return None
+
+    @property
+    def commissioner_weeks(self) -> str:
+        """The weeks the commissioner pays for, in words."""
+        first = f"Week {self.start_week}"
+        if self.playoff_start is None or self.playoff_start > self.last_week:
+            return first
+        if self.playoff_start == self.last_week:
+            return f"{first} and Week {self.last_week}"
+        return f"{first} and Weeks {self.playoff_start} to {self.last_week}"
 
     @property
     def span(self) -> str:
@@ -89,4 +112,4 @@ def fantasy_season(league: Mapping[str, Any], bracket: Sequence[Mapping[str, Any
     scored = _number(settings.get("last_scored_leg"))
     if status == _COMPLETE and scored:
         last_week = scored
-    return FantasySeason(league_season(league), status, start_week, last_week)
+    return FantasySeason(league_season(league), status, start_week, last_week, playoffs_start or None)

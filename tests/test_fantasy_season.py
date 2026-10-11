@@ -106,14 +106,67 @@ def test_no_parlay_runs_outside_the_fantasy_season(tmp_path, monkeypatch, change
     play(tmp_path, monkeypatch, scenario)
 
 
-def test_the_first_fantasy_week_has_no_lowest_scorer(tmp_path, monkeypatch):
+def test_who_pays_in_a_typical_league():
+    season = fantasy_season(league(), BRACKET_3_ROUNDS)
+    paid_by_commissioner = [week for week in range(1, 18) if season.commissioner_pays(week)]
+    assert paid_by_commissioner == [1, 15, 16, 17]
+    assert season.commissioner_pays(1) == "it is the first week of the fantasy season"
+    assert season.commissioner_pays(15) == "it is a fantasy playoff week"
+    assert season.commissioner_pays(14) is None
+    assert season.commissioner_weeks == "Week 1 and Weeks 15 to 17"
+
+
+def test_who_pays_follows_the_leagues_own_playoff_weeks(fixture):
+    saved = fixture("sleeper_league_2018.json")  # starts Week 2, playoffs Weeks 14 to 16
+    season = fantasy_season(saved["league"], saved["winners_bracket"])
+    assert [week for week in range(2, 17) if season.commissioner_pays(week)] == [2, 14, 15, 16]
+    assert season.commissioner_weeks == "Week 2 and Weeks 14 to 16"
+    # A league that does not say when its playoffs start has only the first week.
+    open_ended = fantasy_season({"season": "2026", "status": "in_season", "settings": {}})
+    assert [week for week in range(1, 19) if open_ended.commissioner_pays(week)] == [1]
+    assert open_ended.commissioner_weeks == "Week 1"
+
+
+def test_the_commissioner_pays_in_the_first_fantasy_week(tmp_path, monkeypatch):
     async def scenario(world, at):
         world.sleeper.settings["start_week"] = WEEK
         await at(TUE_ANNOUNCE)
         text = world.channel.last()
-        assert "It is the first week of the fantasy season, so there is no lowest scorer yet." in text
+        assert (
+            "The commissioner is paying for this week's parlay: it is the first week of the fantasy season." in text
+        )
+        assert "Picks are open" in text and "owes **" not in text and "Team 2" not in text
+        assert world.channel.sent[-1].view is None  # no Mark paid button: nobody owes anything
+        assert await world.bot.db.debt(SEASON, WEEK) is None
+        assert (await world.week())["loser_roster_id"] is None
+
+    play(tmp_path, monkeypatch, scenario)
+
+
+def test_the_commissioner_pays_in_a_playoff_week(tmp_path, monkeypatch):
+    async def scenario(world, at):
+        world.sleeper.settings.update(playoff_week_start=WEEK)  # this league's playoffs are Weeks 6 to 8
+        await at(TUE_ANNOUNCE)
+        text = world.channel.last()
+        assert "The commissioner is paying for this week's parlay: it is a fantasy playoff week." in text
         assert "Picks are open" in text and "owes **" not in text and "Team 2" not in text
         assert await world.bot.db.debt(SEASON, WEEK) is None
+
+        # The parlay itself runs as usual.
+        await at(TUE_NOON, tick=False)
+        assert "Your Week 6 pick is" in await world.pick(1, *IRVING_150)
+        await at(THU_DEADLINE)
+        assert "Week 6 picks are closed" in world.channel.last()
+
+    play(tmp_path, monkeypatch, scenario)
+
+
+def test_the_lowest_scorer_pays_in_the_last_week_before_the_playoffs(tmp_path, monkeypatch):
+    async def scenario(world, at):
+        world.sleeper.settings.update(playoff_week_start=WEEK + 1)
+        await at(TUE_ANNOUNCE)
+        assert "**Team 2** (<@2>)" in world.channel.last() and "owes **$10**" in world.channel.last()
+        assert (await world.bot.db.debt(SEASON, WEEK))["roster_id"] == 2
 
     play(tmp_path, monkeypatch, scenario)
 
@@ -127,7 +180,7 @@ def test_the_last_fantasy_week_runs_to_the_end_and_then_the_bot_stops(tmp_path, 
         assert (await world.bot.fantasy()).last_week == WEEK
 
         await at(TUE_ANNOUNCE)
-        assert "**Team 2** (<@2>)" in channel.last()
+        assert "it is a fantasy playoff week" in channel.last()  # the championship week is on the commissioner
         await at(TUE_NOON, tick=False)
         await world.pick(1, *IRVING_150)
         await world.pick(2, *DEN_SPREAD)

@@ -137,6 +137,7 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Commission
         fantasy = await bot.fantasy()
         if fantasy is not None:
             lines.append(f"**Fantasy season (from Sleeper):** {fantasy.span} · league status `{fantasy.status}`")
+            lines.append(f"**Commissioner pays:** {fantasy.commissioner_weeks} · lowest scorer pays otherwise")
         if week_now is None:
             lines.append("**Season:** not in the NFL regular season, so nothing is being posted")
         elif plan is None:

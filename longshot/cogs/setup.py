@@ -88,7 +88,8 @@ class Setup(commands.Cog):
             f"{channel.mention}, and you are the commissioner.\n"
             f"{len(linked & {team['roster_id'] for team in teams})} of {len(teams)} teams are linked to a Discord "
             "member. Link each one with `/link`, then check with `/members`.\n"
-            f"Sleeper has the fantasy season as {fantasy.span}; parlays run for those weeks only.\n"
+            f"Sleeper has the fantasy season as {fantasy.span}; parlays run for those weeks only. The commissioner "
+            f"pays in {fantasy.commissioner_weeks}; the previous week's lowest scorer pays in the others.\n"
             "Settings such as the deadline and sportsbook are under `/config`."
         )
 

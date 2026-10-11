@@ -83,15 +83,17 @@ async def announce(bot: Longshot, plan: WeekPlan, now: datetime, *, force: bool 
         fantasy = await bot.fantasy()
         league_year = fantasy.season
         stale = league_year is not None and league_year != season
-        first_week = week <= fantasy.start_week  # no fantasy week has been played before it
-        if not first_week and not stale:
+        on_the_house = fantasy.commissioner_pays(week)  # the first week and the playoff weeks
+        if not on_the_house and not stale:
             teams = {team["roster_id"]: team for team in await bot.sleeper.teams(league_id)}
             low = lowest_scorers(await bot.sleeper.matchups(league_id, week - 1))
     except SleeperError as error:
         log.warning("Could not read the league from Sleeper: %s", error)
         return False
-    if first_week:
-        lines.append("It is the first week of the fantasy season, so there is no lowest scorer yet.")
+    if on_the_house:
+        payer = "the commissioner"
+        target = "the Sunday and Monday parlay" if plan.split else "this week's parlay"
+        lines.append(f"The commissioner is paying for {target}: {on_the_house}.")
     elif stale:
         lines.append(
             f"I could not read Week {week - 1}'s scores: the connected Sleeper league is from the {league_year} "

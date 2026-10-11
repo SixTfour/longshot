@@ -28,9 +28,20 @@ Only games that kick off after a parlay's deadline can be picked for it. With th
 
 Longshot runs only for the weeks of your fantasy season, which it reads from the Sleeper league:
 
-- **First week:** the league's start week. There is no lowest scorer yet, so that week's parlay has no one owing the stake.
+- **First week:** the league's start week.
 - **Last week:** the final week of the fantasy playoffs, worked out from the week the playoffs start and the number of rounds in the league's bracket. For a league whose playoffs start in Week 15 with three rounds, that is Week 17.
 - **Before the draft and after the league is complete:** nothing runs.
+
+### Who pays
+
+| Week | Paid for by |
+|---|---|
+| The first week of the fantasy season | The commissioner (no fantasy week has been played yet) |
+| Regular fantasy weeks | The lowest scorer of the week before |
+| Fantasy playoff weeks | The commissioner |
+| Thanksgiving bonus | The commissioner |
+
+For a league that starts in Week 1 with playoffs in Weeks 15 to 17, the commissioner pays in Weeks 1, 15, 16 and 17 and the lowest scorer in Weeks 2 to 14. The playoff weeks come from Sleeper. In a commissioner week the announcement names no lowest scorer and no debt is recorded. `/admin loser` can still set one by hand.
 
 Outside those weeks, and outside the NFL regular season (preseason, playoffs, offseason), no parlay is announced and nothing is posted. If the bot is restarted then with a parlay left unfinished, it settles that parlay's records without posting. Commands still answer when someone uses them. `/admin status` shows the weeks Sleeper reports.
 
