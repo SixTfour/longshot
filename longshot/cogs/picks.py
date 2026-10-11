@@ -9,8 +9,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from dataclasses import dataclass
-from typing import Any
-
 import discord
 from discord import app_commands
 from discord.ext import commands
@@ -26,7 +24,7 @@ from ..domain.names import normalize
 from ..domain.odds_math import format_american
 from ..domain.schedule import kickoff_text, stamp
 from ..linebook import NoCredits
-from ..nfl import WeekContext
+from ..nfl import Parlay, WeekPlan
 
 log = logging.getLogger(__name__)
 
@@ -65,6 +63,22 @@ class Subject:
         return f"{self.team.name} · {when}"
 
 
+@dataclass(frozen=True)
+class Window:
+    """What can be picked at this moment."""
+
+    plan: WeekPlan | None
+    taking: list[tuple[Parlay, list[Game]]]  # parlays open to picks, each with its pickable games
+    reason: str | None  # why nothing can be picked, when no parlay is open
+
+    @property
+    def games(self) -> list[Game]:
+        return [game for _, games in self.taking for game in games]
+
+    def parlay_for(self, game: Game) -> Parlay | None:
+        return next((parlay for parlay, games in self.taking if game in games), None)
+
+
 class Picks(commands.Cog):
     def __init__(self, bot: Longshot):
         self.bot = bot
@@ -72,21 +86,26 @@ class Picks(commands.Cog):
 
     # --- what can be picked right now -------------------------------------------
 
-    async def _window(self, late: bool) -> tuple[WeekContext | None, dict[str, Any] | None, list[Game]]:
-        """The live week, its database row, and the games still open to a pick."""
+    async def _window(self, late: bool) -> Window:
+        """The live week, and which of its parlays are taking picks right now."""
         now = utcnow()
-        context = await self.bot.nfl.active(now)
-        if context is None:
-            return None, None, []
-        row = await self.bot.db.week(context.season, context.week)
-        return context, row, context.pickable(now, late=late)
-
-    def _closed_reason(self, context: WeekContext | None, row: dict[str, Any] | None, late: bool) -> str | None:
-        if context is None or row is None or not row["announced_at"]:
-            return "Picks are not open right now."
-        if not late and (row["closed_at"] or utcnow() >= context.times.deadline_at):
-            return f"Week {context.week} picks are closed."
-        return None
+        plan = await self.bot.nfl.active(now)
+        if plan is None:
+            return Window(None, [], "Picks are not open right now.")
+        taking: list[tuple[Parlay, list[Game]]] = []
+        closed: list[str] = []
+        for parlay in plan.parlays:
+            row = await self.bot.db.parlay(*parlay.key)
+            if row is None or not row["announced_at"]:
+                continue
+            if not late and (row["closed_at"] or now >= parlay.times.deadline_at):
+                closed.append(parlay.title)
+            else:
+                taking.append((parlay, parlay.pickable(now, late=late)))
+        if taking:
+            return Window(plan, taking, None)
+        reason = f"{' and '.join(closed)} picks are closed." if closed else "Picks are not open right now."
+        return Window(plan, [], reason)
 
     def _subjects(self, games: list[Game]) -> list[Subject]:
         teams = [Subject(game, team) for game in games for team in (game.away, game.home)]
@@ -149,10 +168,10 @@ class Picks(commands.Cog):
     # --- autocomplete -----------------------------------------------------------
 
     async def _who_choices(self, current: str, *, late: bool) -> list[Choice]:
-        context, row, games = await self._window(late)
-        closed = self._closed_reason(context, row, late)
-        if closed:
-            return notice(closed)
+        window = await self._window(late)
+        if window.reason:
+            return notice(window.reason)
+        games = window.games
         if not games:
             return notice("No games left to pick from this week.")
         if not self.bot.nfl.warmed(games):
@@ -161,7 +180,7 @@ class Picks(commands.Cog):
         return [Choice(name=subject.label[:100], value=subject.value) for subject in self._search(games, current)[:25]]
 
     async def _bet_choices(self, interaction: discord.Interaction, current: str, *, late: bool) -> list[Choice]:
-        _, _, games = await self._window(late)
+        games = (await self._window(late)).games
         subject = self._resolve(games, interaction.namespace.who or "")
         if subject is None:
             return notice("Choose a player or team first.")
@@ -169,7 +188,7 @@ class Picks(commands.Cog):
         return [Choice(name=label, value=key) for key, label in self._bets(subject) if typed in label.lower()][:25]
 
     async def _line_choices(self, interaction: discord.Interaction, current: str, *, late: bool) -> list[Choice]:
-        _, _, games = await self._window(late)
+        games = (await self._window(late)).games
         subject = self._resolve(games, interaction.namespace.who or "")
         bet = self._resolve_bet(subject, interaction.namespace.bet or "") if subject else None
         if subject is None or bet is None:
@@ -208,12 +227,12 @@ class Picks(commands.Cog):
             await say(f"{who_text} not linked to a Sleeper team yet. The commissioner does that with `/link`.")
             return
 
-        context, row, games = await self._window(late)
-        closed = self._closed_reason(context, row, late)
-        if closed:
+        window = await self._window(late)
+        if window.reason:
             extra = "" if late else " Ask the commissioner about a late pick."
-            await say(closed + extra)
+            await say(window.reason + extra)
             return
+        games = window.games
 
         await bot.nfl.warm(games)
         subject = self._resolve(games, who)
@@ -246,10 +265,12 @@ class Picks(commands.Cog):
             return
 
         game = subject.game
+        parlay = window.parlay_for(game)  # the game decides which parlay the pick joins
         prop = PROP_MARKETS.get(bet_key)
         pick = {
-            "season": context.season,
-            "week": context.week,
+            "season": parlay.season,
+            "week": parlay.week,
+            "card": parlay.card,
             "discord_id": target.id,
             "espn_event_id": game.espn_id,
             "game": game.label,
@@ -272,7 +293,7 @@ class Picks(commands.Cog):
             "entered_by": interaction.user.id,
         }
 
-        for other in await bot.db.week_picks(context.season, context.week):
+        for other in await bot.db.parlay_picks(*parlay.key):
             if other["discord_id"] == target.id:
                 continue
             clash = conflict(pick, other)
@@ -296,14 +317,17 @@ class Picks(commands.Cog):
         when = f"{game.label}, {stamp(game.kickoff, 'f')}"
         owner = "Your" if yours else f"{target.mention}'s"
         await say(
-            f"{owner} Week {context.week} pick is **{pick['label']}** ({price} at {book}) · {when}.",
+            f"{owner} {parlay.title} pick is **{pick['label']}** ({price} at {book}) · {when}.",
             allowed_mentions=render.QUIET,
         )
 
         channel = await bot.league_channel()
         if channel is not None:
             total = len(await bot.db.members())
-            count = len(await bot.db.week_picks(context.season, context.week))
+            count = len(await bot.db.parlay_picks(*parlay.key))
+            tally = f"{count} of {total} picks in"
+            if window.plan.split:
+                tally = f"{parlay.title}: {tally}"
             if not yours:
                 lead = f"📝 The commissioner entered a pick for {target.mention}:"
             elif replaced:
@@ -311,7 +335,7 @@ class Picks(commands.Cog):
             else:
                 lead = f"🔒 {target.mention} locked in"
             await channel.send(
-                f"{lead} **{pick['label']}** ({price}) · {when} · {count} of {total} picks in",
+                f"{lead} **{pick['label']}** ({price}) · {when} · {tally}",
                 allowed_mentions=render.QUIET,
             )
 
@@ -367,26 +391,27 @@ class Picks(commands.Cog):
     @app_commands.command(name="mypick", description="Show your pick for this week")
     @app_commands.guild_only()
     async def mypick(self, interaction: discord.Interaction) -> None:
-        context = await self.bot.nfl.active(utcnow())
-        if context is None:
-            await interaction.response.send_message("There is no parlay running right now.", ephemeral=True)
-            return
-        pick = await self.bot.db.member_pick(context.season, context.week, interaction.user.id)
-        if pick is None:
-            row = await self.bot.db.week(context.season, context.week)
-            if self._closed_reason(context, row, late=False):
-                text = f"You have no pick for Week {context.week}, and picks are closed."
-            else:
-                text = (
-                    f"You have not picked for Week {context.week} yet. Picks close "
-                    f"{stamp(context.times.deadline_at, 'R')}. Use `/pick`."
+        now = utcnow()
+        plan = await self.bot.nfl.active(now)
+        lines = []
+        for parlay in plan.parlays if plan else []:
+            row = await self.bot.db.parlay(*parlay.key)
+            if row is None or not row["announced_at"]:
+                continue
+            pick = await self.bot.db.member_pick(*parlay.key, interaction.user.id)
+            if pick is not None:
+                lines.append(
+                    f"**{parlay.title}:** {render.slip_line(pick)}\n{pick['game']}, "
+                    f"{stamp(parse_iso(pick['kickoff']), 'f')}"
                 )
-            await interaction.response.send_message(text, ephemeral=True)
-            return
+            elif row["closed_at"] or now >= parlay.times.deadline_at:
+                lines.append(f"**{parlay.title}:** no pick, and picks are closed.")
+            else:
+                lines.append(
+                    f"**{parlay.title}:** no pick yet. Picks close {stamp(parlay.times.deadline_at, 'R')}. Use `/pick`."
+                )
         await interaction.response.send_message(
-            f"Week {context.week}: {render.slip_line(pick)}\n{pick['game']}, {stamp(parse_iso(pick['kickoff']), 'f')}",
-            ephemeral=True,
-            allowed_mentions=render.QUIET,
+            "\n".join(lines) or "There is no parlay running right now.", ephemeral=True, allowed_mentions=render.QUIET
         )
 
 

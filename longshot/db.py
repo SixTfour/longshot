@@ -35,9 +35,12 @@ CREATE TABLE IF NOT EXISTS members (
     sleeper_user_id TEXT
 );
 
-CREATE TABLE IF NOT EXISTS weeks (
+-- One row per parlay. Most weeks have a single 'main' parlay; Thanksgiving week
+-- also has a 'bonus' one. The lowest scorer (loser_*) is recorded on the main row.
+CREATE TABLE IF NOT EXISTS parlays (
     season          INTEGER NOT NULL,
     week            INTEGER NOT NULL,
+    card            TEXT NOT NULL DEFAULT 'main',
     stake           REAL,
     loser_roster_id INTEGER,
     loser_team      TEXT,
@@ -55,13 +58,14 @@ CREATE TABLE IF NOT EXISTS weeks (
     result          TEXT,
     payout          REAL,
     recap_at        TEXT,
-    PRIMARY KEY (season, week)
+    PRIMARY KEY (season, week, card)
 );
 
 CREATE TABLE IF NOT EXISTS picks (
     id            INTEGER PRIMARY KEY AUTOINCREMENT,
     season        INTEGER NOT NULL,
     week          INTEGER NOT NULL,
+    card          TEXT NOT NULL DEFAULT 'main',
     discord_id    INTEGER NOT NULL,
     espn_event_id TEXT NOT NULL,
     game          TEXT NOT NULL,
@@ -84,14 +88,15 @@ CREATE TABLE IF NOT EXISTS picks (
     graded_by     TEXT,
     entered_by    INTEGER NOT NULL,
     created_at    TEXT NOT NULL,
-    UNIQUE (season, week, discord_id)
+    UNIQUE (season, week, card, discord_id)
 );
 
 CREATE TABLE IF NOT EXISTS no_shows (
     season     INTEGER NOT NULL,
     week       INTEGER NOT NULL,
+    card       TEXT NOT NULL DEFAULT 'main',
     discord_id INTEGER NOT NULL,
-    PRIMARY KEY (season, week, discord_id)
+    PRIMARY KEY (season, week, card, discord_id)
 );
 
 -- kind is 'debt' (the week's loser owes the stake) or 'payment' (it was collected).
@@ -109,12 +114,12 @@ CREATE TABLE IF NOT EXISTS ledger (
 """
 
 PICK_COLUMNS = (
-    "season", "week", "discord_id", "espn_event_id", "game", "kickoff", "home_abbr", "away_abbr",
+    "season", "week", "card", "discord_id", "espn_event_id", "game", "kickoff", "home_abbr", "away_abbr",
     "market", "side", "line", "price", "alt", "team_abbr", "player_id", "player_name", "label",
     "entered_by",
 )
 
-WEEK_COLUMNS = {
+PARLAY_COLUMNS = {
     "stake", "loser_roster_id", "loser_team", "loser_points", "tied_roster_ids", "announced_at",
     "reminders_sent", "deadline_at", "closed_at", "skipped", "placed_at", "placed_odds",
     "killer_pick_id", "slates_posted", "result", "payout", "recap_at",
@@ -231,37 +236,46 @@ class Database:
     async def member_by_roster(self, roster_id: int) -> dict[str, Any] | None:
         return await self._one("SELECT * FROM members WHERE roster_id = ?", (roster_id,))
 
-    # --- weeks ------------------------------------------------------------------
+    # --- parlays ----------------------------------------------------------------
 
-    async def week(self, season: int, week: int) -> dict[str, Any] | None:
-        return await self._one("SELECT * FROM weeks WHERE season = ? AND week = ?", (season, week))
+    async def parlay(self, season: int, week: int, card: str) -> dict[str, Any] | None:
+        return await self._one(
+            "SELECT * FROM parlays WHERE season = ? AND week = ? AND card = ?", (season, week, card)
+        )
 
-    async def ensure_week(self, season: int, week: int) -> dict[str, Any]:
-        await self._run("INSERT OR IGNORE INTO weeks (season, week) VALUES (?, ?)", (season, week))
-        return await self.week(season, week)
+    async def ensure_parlay(self, season: int, week: int, card: str) -> dict[str, Any]:
+        await self._run(
+            "INSERT OR IGNORE INTO parlays (season, week, card) VALUES (?, ?, ?)", (season, week, card)
+        )
+        return await self.parlay(season, week, card)
 
-    async def update_week(self, season: int, week: int, **fields: Any) -> None:
-        unknown = set(fields) - WEEK_COLUMNS
+    async def update_parlay(self, season: int, week: int, card: str, **fields: Any) -> None:
+        unknown = set(fields) - PARLAY_COLUMNS
         if unknown:
-            raise ValueError(f"Unknown week columns: {sorted(unknown)}")
+            raise ValueError(f"Unknown parlay columns: {sorted(unknown)}")
         if not fields:
             return
         assignments = ", ".join(f"{name} = ?" for name in fields)
         await self._run(
-            f"UPDATE weeks SET {assignments} WHERE season = ? AND week = ?",
-            (*fields.values(), season, week),
+            f"UPDATE parlays SET {assignments} WHERE season = ? AND week = ? AND card = ?",
+            (*fields.values(), season, week, card),
         )
 
-    async def weeks(self, season: int | None = None) -> list[dict[str, Any]]:
+    async def parlays(self, season: int | None = None, week: int | None = None) -> list[dict[str, Any]]:
+        """Every parlay, or one season's, or one week's. A week's bonus parlay sorts before its main one."""
         if season is None:
-            return await self._all("SELECT * FROM weeks ORDER BY season, week")
-        return await self._all("SELECT * FROM weeks WHERE season = ? ORDER BY week", (season,))
+            return await self._all("SELECT * FROM parlays ORDER BY season, week, card")
+        if week is None:
+            return await self._all("SELECT * FROM parlays WHERE season = ? ORDER BY week, card", (season,))
+        return await self._all(
+            "SELECT * FROM parlays WHERE season = ? AND week = ? ORDER BY card", (season, week)
+        )
 
     # --- picks ------------------------------------------------------------------
 
     async def save_pick(self, pick: dict[str, Any]) -> tuple[int, bool]:
-        """Insert or replace a member's pick for the week. Returns (id, replaced)."""
-        existing = await self.member_pick(pick["season"], pick["week"], pick["discord_id"])
+        """Insert or replace a member's pick for a parlay. Returns (id, replaced)."""
+        existing = await self.member_pick(pick["season"], pick["week"], pick["card"], pick["discord_id"])
         if existing:
             await self.conn.execute("DELETE FROM picks WHERE id = ?", (existing["id"],))
         columns = ", ".join(PICK_COLUMNS)
@@ -275,15 +289,16 @@ class Database:
     async def pick(self, pick_id: int) -> dict[str, Any] | None:
         return await self._one("SELECT * FROM picks WHERE id = ?", (pick_id,))
 
-    async def member_pick(self, season: int, week: int, discord_id: int) -> dict[str, Any] | None:
+    async def member_pick(self, season: int, week: int, card: str, discord_id: int) -> dict[str, Any] | None:
         return await self._one(
-            "SELECT * FROM picks WHERE season = ? AND week = ? AND discord_id = ?",
-            (season, week, discord_id),
+            "SELECT * FROM picks WHERE season = ? AND week = ? AND card = ? AND discord_id = ?",
+            (season, week, card, discord_id),
         )
 
-    async def week_picks(self, season: int, week: int) -> list[dict[str, Any]]:
+    async def parlay_picks(self, season: int, week: int, card: str) -> list[dict[str, Any]]:
         return await self._all(
-            "SELECT * FROM picks WHERE season = ? AND week = ? ORDER BY kickoff, id", (season, week)
+            "SELECT * FROM picks WHERE season = ? AND week = ? AND card = ? ORDER BY kickoff, id",
+            (season, week, card),
         )
 
     async def all_picks(self, season: int | None = None) -> list[dict[str, Any]]:
@@ -312,10 +327,10 @@ class Database:
 
     # --- no-shows ---------------------------------------------------------------
 
-    async def add_no_show(self, season: int, week: int, discord_id: int) -> None:
+    async def add_no_show(self, season: int, week: int, card: str, discord_id: int) -> None:
         await self._run(
-            "INSERT OR IGNORE INTO no_shows (season, week, discord_id) VALUES (?, ?, ?)",
-            (season, week, discord_id),
+            "INSERT OR IGNORE INTO no_shows (season, week, card, discord_id) VALUES (?, ?, ?, ?)",
+            (season, week, card, discord_id),
         )
 
     async def no_shows(self, season: int | None = None) -> list[dict[str, Any]]:
@@ -326,7 +341,7 @@ class Database:
     # --- ledger -----------------------------------------------------------------
 
     async def set_debt(self, season: int, week: int, roster_id: int, team_name: str, amount: float) -> None:
-        """Record who owes the stake for a week, replacing any earlier answer."""
+        """Record who owes the stake for a week's main parlay, replacing any earlier answer."""
         current = await self.debt(season, week)
         if current and current["roster_id"] == roster_id and current["amount"] == amount:
             return

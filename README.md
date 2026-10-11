@@ -13,38 +13,53 @@ It never places a bet or moves money. The commissioner still places the parlay a
 | Tuesday 10:00 | Longshot posts last week's lowest scorer from Sleeper, with a **Mark paid** button, and opens picks. |
 | Until the deadline | Members find a bet in the sportsbook app, then lock it in with `/pick`. |
 | 24, 7 and 2 hours before the deadline | Members without a pick are pinged in the channel and by DM. |
-| Deadline (Thursday 19:00 by default) | Picks close and the slip is posted. Anyone without a pick is named; no bet is chosen for them. |
+| Deadline (Saturday 9:00 PM by default) | Picks close and the slip is posted. Anyone without a pick is named; no bet is chosen for them. |
 | After that | The commissioner places the parlay and records the real odds with `/placed`. |
 | During games | Each leg is posted as it is settled. The first miss is called out as the parlay killer. |
 | After each slate | A summary of that slate's legs, whether the parlay is alive, and what is next. |
 | After the last leg | The result, and the payout split if it hit. |
 
-Only games that kick off after the deadline can be picked, so a Sunday deadline leaves out Thursday's game. The cycle runs for the 18 weeks of the regular season.
+Only games that kick off after the deadline can be picked. With the default Saturday 9:00 PM deadline that means Sunday's and Monday's games. The cycle runs for the 18 weeks of the regular season.
 
-### Holiday weeks
+### Thanksgiving week
 
-- **Slates come from the real schedule.** Thanksgiving's three games, Black Friday, Christmas Day games, Saturday games and London morning games each get their own slate and their own update.
-- **Early weeks move the deadline.** If the deadline is set for Thursday evening or earlier and a week's first game kicks off before it (Thanksgiving week, a Wednesday opener), the deadline for that week moves to one hour before that first kickoff. The announcement says so.
-- **A weekend deadline never moves.** A league that only picks Sunday games has chosen to leave out everything earlier.
+Thanksgiving week has two parlays, and each member makes one pick in each.
+
+| Parlay | Games | Paid for by | Picks close |
+|---|---|---|---|
+| Thanksgiving bonus | Wednesday, Thursday and Friday | The commissioner | Tuesday 9:00 PM |
+| The weekly parlay | Sunday and Monday | The previous week's lowest scorer | Saturday 9:00 PM |
+
+- Both open with Tuesday's announcement. `/pick` puts a pick in whichever parlay its game belongs to.
+- Each parlay has its own slip, reminders, slate updates, result and stats.
+- The lowest scorer owes one stake, for the weekly parlay. The bonus parlay is not recorded as anyone's debt.
+- `/placed`, `/grade` and `/admin run` take a `parlay` option that week to say which one is meant.
+- The week is found from the schedule (the one containing Thanksgiving Day), not from its number.
+
+Every other week, Christmas week included, has the one weekly parlay.
+
+### Slates
+
+Slates come from the real schedule: games that kick off within 90 minutes of each other. Thanksgiving's three games, Black Friday, Saturday games and London morning games each get their own slate and their own update.
 
 ## Commands
 
 | Command | Who | What it does |
 |---|---|---|
 | `/pick who bet line` | Members | Lock in a leg. `who` is a player or a team; `line` lists the main line and every alternate. |
-| `/mypick` | Members | Show your pick for this week. |
-| `/slip [week]` | Members | The parlay and how each leg is doing. |
+| `/mypick` | Members | Show your pick, or picks, for this week. |
+| `/slip [week]` | Members | The week's parlay (both, in Thanksgiving week) and how each leg is doing. |
 | `/stats [member]`, `/leaderboard` | Members | Hit rate, streaks, parlays killed, weeks as lowest scorer, deadlines missed. |
 | `/ledger` | Members | Who owes, what has been collected, what has been won. |
 | `/members` | Members | Which Sleeper team belongs to which Discord member. |
 | `/setup league_id channel` | Commissioner | Connect the Sleeper league and choose the channel. |
 | `/link member team`, `/unlink member` | Commissioner | Tie a Discord member to a Sleeper team. |
-| `/config [setting] [value]` | Commissioner | Show or change the deadline, sportsbook, announcement time, reminders, stake and line cache. |
+| `/config [setting] [value]` | Commissioner | Show or change the deadlines, sportsbook, announcement time, reminders, stake and line cache. |
 | `/pickfor member who bet line` | Commissioner | Enter or replace a member's pick, including after the deadline. |
-| `/placed odds` | Commissioner | Record that the parlay was placed, with the sportsbook's odds. |
+| `/placed odds [parlay]` | Commissioner | Record that the parlay was placed, with the sportsbook's odds. |
 | `/paid member [week]` | Commissioner | Mark a stake as collected. |
-| `/grade member result [week]` | Commissioner | Settle a leg by hand, or correct one. |
-| `/admin run step [week]` | Commissioner | Run one step of the cycle now. |
+| `/grade member result [week] [parlay]` | Commissioner | Settle a leg by hand, or correct one. |
+| `/admin run step [week] [parlay]` | Commissioner | Run one step of the cycle now. |
 | `/admin loser member [week]` | Commissioner | Set who pays, for a tie or a correction. |
 | `/admin status` | Commissioner | How the bot is set up, this week's times, and Odds API credits left. |
 
@@ -149,7 +164,8 @@ Change these with `/config`. They take effect without a restart.
 
 | Setting | Default | Notes |
 |---|---|---|
-| Pick deadline | `thu 19:00` | Day and time, US Eastern. Applies to the current week if it has not closed. |
+| Pick deadline | `sat 21:00` | Day and time, US Eastern. Applies to the current week if it has not closed. |
+| Thanksgiving bonus deadline | `tue 21:00` | Day and time, US Eastern, for the Wednesday-to-Friday parlay in Thanksgiving week. |
 | Sportsbook | `draftkings` | Any bookmaker key from The Odds API, such as `fanduel` or `betmgm`. |
 | Loser announcement | `tue 10:00` | When the lowest scorer is posted and picks open. |
 | Reminders | `24, 7, 2` | Hours before the deadline. |

@@ -11,6 +11,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from .db import Database
+from .domain.cards import BONUS, MAIN
 from .domain.schedule import DayTime, parse_day_time, parse_reminders
 
 # Bookmaker keys The Odds API uses for US sportsbooks. Offered as suggestions;
@@ -65,13 +66,20 @@ class Spec:
 
 
 SPECS: dict[str, Spec] = {
-    "deadline": Spec("Pick deadline", "Day and time, US Eastern: `thu 19:00`, `sunday 12:30pm`", _day_time),
+    "deadline": Spec("Pick deadline", "Day and time, US Eastern: `sat 21:00`, `sunday 12:30pm`", _day_time),
+    "bonus_deadline": Spec(
+        "Thanksgiving bonus deadline", "Day and time, US Eastern, for the Wednesday-to-Friday parlay: `tue 21:00`",
+        _day_time,
+    ),
     "sportsbook": Spec("Sportsbook", "`draftkings`, `fanduel`, `betmgm`, ...", _sportsbook),
     "announce": Spec("Loser announcement", "Day and time, US Eastern: `tue 10:00`", _day_time),
     "reminders": Spec("Reminders", "Hours before the deadline: `24, 7, 2`. Empty for none.", _reminders),
     "stake": Spec("Stake", "Dollars the loser owes: `10`", _positive(0.01, 100000, "The stake")),
     "cache_hours": Spec("Line cache", "Hours to reuse fetched lines: `12`", _positive(0.25, 72, "Cache hours")),
 }
+
+
+DEADLINES = ("deadline", "bonus_deadline")
 
 
 class Settings:
@@ -86,13 +94,15 @@ class Settings:
                 spec.clean(self._defaults[key])
             except ValueError as error:
                 raise ValueError(f"DEFAULT_{key.upper()} is invalid. {error}") from None
-        self._check_order(parse_day_time(self._defaults["announce"]), parse_day_time(self._defaults["deadline"]))
+        announce = parse_day_time(self._defaults["announce"])
+        for key in DEADLINES:
+            self._check_order(announce, parse_day_time(self._defaults[key]), SPECS[key].label)
 
     @staticmethod
-    def _check_order(announce: DayTime, deadline: DayTime) -> None:
+    def _check_order(announce: DayTime, deadline: DayTime, label: str) -> None:
         if deadline.offset <= announce.offset:
             raise ValueError(
-                f"The deadline ({deadline.pretty}) must come after the loser announcement "
+                f"The {label.lower()} ({deadline.pretty}) must come after the loser announcement "
                 f"({announce.pretty}) in the Tuesday-to-Monday week."
             )
 
@@ -102,15 +112,16 @@ class Settings:
 
     async def set(self, key: str, text: str) -> str:
         value = SPECS[key].clean(text)
-        if key in ("deadline", "announce"):
+        if key == "announce" or key in DEADLINES:
             announce = parse_day_time(value if key == "announce" else await self.raw("announce"))
-            deadline = parse_day_time(value if key == "deadline" else await self.raw("deadline"))
-            self._check_order(announce, deadline)
+            for name in DEADLINES:
+                deadline = parse_day_time(value if key == name else await self.raw(name))
+                self._check_order(announce, deadline, SPECS[name].label)
         await self._db.set_setting(key, value)
         return value
 
-    async def deadline(self) -> DayTime:
-        return parse_day_time(await self.raw("deadline"))
+    async def deadline(self, card: str = MAIN) -> DayTime:
+        return parse_day_time(await self.raw("bonus_deadline" if card == BONUS else "deadline"))
 
     async def announce(self) -> DayTime:
         return parse_day_time(await self.raw("announce"))
@@ -134,7 +145,7 @@ class Settings:
     async def describe(self, key: str) -> str:
         """The current value, written for a person."""
         value = await self.raw(key)
-        if key in ("deadline", "announce"):
+        if key == "announce" or key in DEADLINES:
             return parse_day_time(value).pretty
         if key == "reminders":
             hours = parse_reminders(value)

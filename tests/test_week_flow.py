@@ -8,6 +8,7 @@ import pytest
 from world import BENCHED, BUCS_GAME, DANIELS, IRVING, SEASON, TNF, WEEK, FakeInteraction, build, et
 
 from longshot import tracking
+from longshot.domain.cards import MAIN
 from longshot.domain.odds_math import parlay_decimal, total_return
 from longshot.domain.stats import compute
 from longshot.linebook import NoCredits
@@ -26,11 +27,15 @@ IRVING_TD = (f"p:{IRVING}", "player_anytime_td", "yes")
 DEN_SPREAD = ("t:DEN", "spreads", "home:-2.5")
 
 
-def play(tmp_path, monkeypatch, scenario, **settings):
-    """Run a scenario with a fresh world and a clock the test controls."""
+def play(tmp_path, monkeypatch, scenario, *, week=WEEK, deadline="thu 19:00", **settings):
+    """Run a scenario with a fresh world and a clock the test controls.
+
+    Most scenarios use a Thursday-evening deadline so that Thursday's game is in
+    play; the Saturday default and Thanksgiving week have scenarios of their own.
+    """
 
     async def run():
-        world = await build(tmp_path, **settings)
+        world = await build(tmp_path, week=week, deadline=deadline, **settings)
         clock = {"now": TUE_NOON}
 
         async def at(moment, *, tick=True):
@@ -39,8 +44,9 @@ def play(tmp_path, monkeypatch, scenario, **settings):
                 await world.tick(moment)
 
         try:
-            # The bot loads each cog as a fresh module, so patch the one it is actually using.
-            monkeypatch.setattr(sys.modules["longshot.cogs.picks"], "utcnow", lambda: clock["now"])
+            # The bot loads each cog as a fresh module, so patch the ones it is actually using.
+            for cog in ("picks", "slip", "admin", "config"):
+                monkeypatch.setattr(sys.modules[f"longshot.cogs.{cog}"], "utcnow", lambda: clock["now"])
             await scenario(world, at)
         finally:
             await world.close()
@@ -127,7 +133,7 @@ def test_a_week_where_the_parlay_hits(tmp_path, monkeypatch):
         assert channel.texts == ["✅ **Leg hit** · <@3> · Bucky Irving anytime TD (-130)"]
         statuses = await world.statuses()
         assert (statuses[1], statuses[3]) == ("pending", "won")
-        assert (await world.bot.db.member_pick(SEASON, WEEK, 1))["stat_value"] == 165
+        assert (await world.bot.db.member_pick(SEASON, WEEK, MAIN, 1))["stat_value"] == 165
 
         # Final whistle: the last leg lands and the parlay cashes.
         channel.clear()
@@ -146,7 +152,7 @@ def test_a_week_where_the_parlay_hits(tmp_path, monkeypatch):
 
         stats = compute(
             await world.bot.db.members(), await world.bot.db.all_picks(SEASON),
-            await world.bot.db.weeks(SEASON), await world.bot.db.no_shows(SEASON),
+            await world.bot.db.parlays(SEASON), await world.bot.db.no_shows(SEASON),
         )
         assert [stats[n].won for n in (1, 2, 3)] == [1, 1, 1]
         assert (stats[2].low_scores, stats[3].no_shows) == (1, 1)
@@ -205,7 +211,7 @@ def test_a_missed_leg_kills_the_parlay(tmp_path, monkeypatch):
 
         # The commissioner overturns the miss: the kill is withdrawn.
         await world.bot.db.grade_pick(killer, "won", None, "Settled by the commissioner", "99")
-        await tracking.announce_grades(world.bot, SEASON, WEEK, [killer])
+        await tracking.announce_grades(world.bot, SEASON, WEEK, MAIN, [killer])
         assert (await world.week())["killer_pick_id"] is None
 
     play(tmp_path, monkeypatch, scenario)

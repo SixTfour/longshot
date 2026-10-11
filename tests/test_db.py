@@ -18,7 +18,7 @@ async def fresh() -> Database:
 
 def pick(discord_id=1, **overrides):
     base = dict(
-        season=2026, week=6, discord_id=discord_id, espn_event_id="401", game="PHI @ JAX",
+        season=2026, week=6, card="main", discord_id=discord_id, espn_event_id="401", game="PHI @ JAX",
         kickoff="2026-10-18T17:00:00+00:00", home_abbr="JAX", away_abbr="PHI", market="player_rush_yds",
         side="over", line=39.5, price=105, alt=1, team_abbr=None, player_id="4040715",
         player_name="Jalen Hurts", label="Jalen Hurts 40+ rushing yards", entered_by=discord_id,
@@ -71,7 +71,7 @@ def test_a_second_pick_replaces_the_first():
         await db.grade_pick(first_id, "won", 52, None, "auto")
         second_id, replaced = await db.save_pick(pick(label="PHI moneyline", market="h2h", side="away", line=None))
         assert replaced is True
-        picks = await db.week_picks(2026, 6)
+        picks = await db.parlay_picks(2026, 6, "main")
         assert len(picks) == 1
         # The replacement starts ungraded.
         assert (picks[0]["id"], picks[0]["label"], picks[0]["status"]) == (second_id, "PHI moneyline", "pending")
@@ -86,7 +86,7 @@ def test_pending_picks_and_progress():
         live, _ = await db.save_pick(pick(1))
         graded, _ = await db.save_pick(pick(2))
         await db.grade_pick(graded, "lost", 12, None, "auto")
-        assert [p["id"] for p in await db.week_picks(2026, 6) if p["status"] == "pending"] == [live]
+        assert [p["id"] for p in await db.parlay_picks(2026, 6, "main") if p["status"] == "pending"] == [live]
 
         await db.set_progress(live, 31)
         await db.set_progress(graded, 99)  # a settled leg keeps its final number
@@ -105,15 +105,43 @@ def test_pending_picks_and_progress():
     run(scenario())
 
 
-def test_week_updates_reject_unknown_columns():
+def test_parlay_updates_reject_unknown_columns():
     async def scenario():
         db = await fresh()
-        week = await db.ensure_week(2026, 6)
-        assert week["announced_at"] is None and week["reminders_sent"] == "[]"
-        await db.update_week(2026, 6, stake=10, placed_odds=125000)
-        assert (await db.week(2026, 6))["placed_odds"] == 125000
+        row = await db.ensure_parlay(2026, 6, "main")
+        assert row["announced_at"] is None and row["reminders_sent"] == "[]" and row["slates_posted"] == "[]"
+        await db.update_parlay(2026, 6, "main", stake=10, placed_odds=125000)
+        assert (await db.parlay(2026, 6, "main"))["placed_odds"] == 125000
         with pytest.raises(ValueError):
-            await db.update_week(2026, 6, nonsense=1)
+            await db.update_parlay(2026, 6, "main", nonsense=1)
+        await db.close()
+
+    run(scenario())
+
+
+def test_a_week_can_hold_two_parlays():
+    async def scenario():
+        db = await fresh()
+        await db.ensure_parlay(2026, 12, "main")
+        await db.ensure_parlay(2026, 12, "bonus")
+        await db.ensure_parlay(2026, 12, "bonus")  # asking twice makes one row
+        await db.update_parlay(2026, 12, "bonus", placed_odds=5000)
+        assert [row["card"] for row in await db.parlays(2026, 12)] == ["bonus", "main"]
+        assert (await db.parlay(2026, 12, "main"))["placed_odds"] is None
+        assert len(await db.parlays(2026)) == 2 and len(await db.parlays()) == 2
+
+        # One member holds a pick in each; replacing one leaves the other alone.
+        await db.save_pick(pick(1, week=12, card="bonus", label="DET -2.5"))
+        monday, _ = await db.save_pick(pick(1, week=12, card="main", label="TB moneyline"))
+        _, replaced = await db.save_pick(pick(1, week=12, card="bonus", label="DET moneyline"))
+        assert replaced is True
+        assert [p["label"] for p in await db.parlay_picks(2026, 12, "bonus")] == ["DET moneyline"]
+        assert (await db.member_pick(2026, 12, "main", 1))["id"] == monday
+
+        await db.add_no_show(2026, 12, "bonus", 3)
+        await db.add_no_show(2026, 12, "main", 3)
+        await db.add_no_show(2026, 12, "main", 3)
+        assert len(await db.no_shows(2026)) == 2
         await db.close()
 
     run(scenario())

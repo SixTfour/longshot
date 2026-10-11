@@ -7,6 +7,7 @@ from typing import Any
 
 import discord
 
+from .domain.cards import card_title
 from .domain.grading import DROPPED, LOST, PENDING, PUSH, REVIEW, VOID, WON, parlay_status
 from .domain.odds_math import (
     american_to_decimal,
@@ -89,13 +90,14 @@ def odds_summary(week: Mapping[str, Any], picks: list[Pick], stake: float) -> st
     )
 
 
-def slip_embed(week: Mapping[str, Any], picks: list[Pick], stake: float, *, title: str | None = None) -> discord.Embed:
+def slip_embed(parlay: Mapping[str, Any], picks: list[Pick], stake: float, *, title: str | None = None) -> discord.Embed:
+    """A parlay's legs and odds. parlay is its database row."""
     status = parlay_status(pick["status"] for pick in picks)
     colour = {WON: GREEN, LOST: RED, VOID: GREY}.get(status, GOLD)
-    embed = discord.Embed(title=title or f"Week {week['week']} parlay", colour=colour)
+    embed = discord.Embed(title=title or f"{card_title(parlay['week'], parlay['card'])} parlay", colour=colour)
     if picks:
         embed.description = "\n".join(slip_line(pick) for pick in picks)
-        embed.add_field(name=f"{len(picks)} legs", value=odds_summary(week, picks, stake), inline=False)
+        embed.add_field(name=f"{len(picks)} legs", value=odds_summary(parlay, picks, stake), inline=False)
     else:
         embed.description = "No picks yet."
     return embed

@@ -56,7 +56,7 @@ class Ledger(commands.Cog):
     async def ledger(self, interaction: discord.Interaction) -> None:
         season = await self.bot.nfl.season()
         debts = await self.bot.db.debts(season)
-        weeks = await self.bot.db.weeks(season)
+        weeks = await self.bot.db.parlays(season)
         by_roster = {member["roster_id"]: member["discord_id"] for member in await self.bot.db.members()}
 
         def who(debt: dict) -> str:

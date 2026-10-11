@@ -11,6 +11,7 @@ from discord.ext import commands
 from .. import render, tracking, weekly
 from ..bot import Longshot, commissioner_only
 from ..db import utcnow
+from ..domain.cards import BONUS, MAIN
 from ..domain.odds_math import format_money
 from ..domain.schedule import stamp
 from ..views import paid_view
@@ -20,7 +21,11 @@ STEPS = [
     app_commands.Choice(name="remind: nudge members who have not picked", value="remind"),
     app_commands.Choice(name="close: close picks and post the slip", value="close"),
     app_commands.Choice(name="track: check live games and grade legs", value="track"),
-    app_commands.Choice(name="recap: post the week's result", value="recap"),
+    app_commands.Choice(name="recap: post the result", value="recap"),
+]
+PARLAYS = [
+    app_commands.Choice(name="The weekly parlay", value=MAIN),
+    app_commands.Choice(name="Thanksgiving bonus", value=BONUS),
 ]
 
 
@@ -33,39 +38,49 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Commission
     async def _week(self, week: int | None) -> tuple[int, int] | None:
         if week is not None:
             return await self.bot.nfl.season(), week
-        context = await self.bot.nfl.active(utcnow())
-        return (context.season, context.week) if context else None
+        plan = await self.bot.nfl.active(utcnow())
+        return (plan.season, plan.week) if plan else None
 
     @app_commands.command(name="run", description="Run one step of the weekly cycle now, whatever the clock says")
-    @app_commands.describe(step="Which step", week="The parlay week. Leave empty for this week.")
-    @app_commands.choices(step=STEPS)
+    @app_commands.describe(
+        step="Which step",
+        week="The parlay week. Leave empty for this week.",
+        parlay="Thanksgiving week only: run the step for one of its two parlays",
+    )
+    @app_commands.choices(step=STEPS, parlay=PARLAYS)
     @commissioner_only()
     async def run(
         self,
         interaction: discord.Interaction,
         step: app_commands.Choice[str],
         week: app_commands.Range[int, 1, 18] | None = None,
+        parlay: app_commands.Choice[str] | None = None,
     ) -> None:
         await interaction.response.defer(ephemeral=True)
         target = await self._week(week)
-        context = await self.bot.nfl.context(*target) if target else None
-        if context is None:
+        plan = await self.bot.nfl.plan(*target) if target else None
+        if plan is None:
             await interaction.followup.send("There is no such week in the regular season right now.")
             return
         now = utcnow()
+        chosen = [item for item in plan.parlays if parlay is None or item.card == parlay.value]
         if step.value == "announce":
-            done = await weekly.announce(self.bot, context, now, force=True)
-        elif step.value == "remind":
-            done = await weekly.remind(self.bot, context, now, force=True)
-        elif step.value == "close":
-            done = await weekly.close_picks(self.bot, context, now, force=True)
+            done = await weekly.announce(self.bot, plan, now, force=True)
         elif step.value == "track":
-            await tracking.track_week(self.bot, context.season, context.week, now)
+            await tracking.track_week(self.bot, plan.season, plan.week)
             done = True
         else:
-            done = await weekly.recap(self.bot, context.season, context.week, force=True)
+            results = []
+            for item in chosen:
+                if step.value == "remind":
+                    results.append(await weekly.remind(self.bot, item, now, force=True))
+                elif step.value == "close":
+                    results.append(await weekly.close_picks(self.bot, item, now, force=True))
+                else:
+                    results.append(await weekly.recap(self.bot, *item.key, force=True))
+            done = any(results)
         outcome = "Done." if done else "Nothing to do (or the league channel is not set up; see `/admin status`)."
-        await interaction.followup.send(f"`{step.value}` for Week {context.week}: {outcome}")
+        await interaction.followup.send(f"`{step.value}` for Week {plan.week}: {outcome}")
 
     @app_commands.command(name="loser", description="Set who owes the stake for a week's parlay (ties, or to correct it)")
     @app_commands.describe(member="Who pays", week="The parlay week they are funding. Leave empty for this week.")
@@ -83,7 +98,7 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Commission
             )
             return
         season, week_number = target
-        row = await self.bot.db.ensure_week(season, week_number)
+        row = await self.bot.db.ensure_parlay(season, week_number, MAIN)
         # Keep the score if this settles a tie; a different pick has no score to show.
         tied = row["tied_roster_ids"] and linked["roster_id"] in json.loads(row["tied_roster_ids"])
         await weekly.record_loser(self.bot, season, week_number, linked, row["loser_points"] if tied else None)
@@ -109,24 +124,24 @@ class Admin(commands.GroupCog, group_name="admin", group_description="Commission
             f"**Members linked:** {len(await bot.db.members())}",
             f"**Sportsbook:** {await bot.settings.sportsbook_name()}",
         ]
-        context = await bot.nfl.active(now)
-        if context is None:
+        plan = await bot.nfl.active(now)
+        if plan is None:
             lines.append("**Week:** none running (outside the regular season, or before the first announcement)")
         else:
-            row = await bot.db.week(context.season, context.week) or {}
-            picks = await bot.db.week_picks(context.season, context.week)
-            moved = " (moved up for an early first game)" if context.times.moved_early else ""
-            state = (
-                "result posted" if row.get("recap_at")
-                else "picks closed" if row.get("closed_at")
-                else "picks open" if row.get("announced_at")
-                else "waiting to announce"
-            )
-            lines += [
-                f"**Week {context.week}:** {state} · {len(picks)} picks in",
-                f"**Announcement:** {stamp(context.times.announce_at, 'F')}",
-                f"**Deadline:** {stamp(context.times.deadline_at, 'F')}{moved}",
-            ]
+            lines.append(f"**Week {plan.week} announcement:** {stamp(plan.announce_at, 'F')}")
+            for parlay in plan.parlays:
+                row = await bot.db.parlay(*parlay.key) or {}
+                picks = await bot.db.parlay_picks(*parlay.key)
+                state = (
+                    "result posted" if row.get("recap_at")
+                    else "picks closed" if row.get("closed_at")
+                    else "picks open" if row.get("announced_at")
+                    else "waiting to announce"
+                )
+                lines.append(
+                    f"**{parlay.title} parlay:** {state} · {len(picks)} picks in · deadline "
+                    f"{stamp(parlay.times.deadline_at, 'F')}"
+                )
         remaining, used = await bot.linebook.usage()
         lines.append(
             "**Odds API credits:** no call made yet"

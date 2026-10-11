@@ -55,25 +55,26 @@ class Scheduler:
         if await bot.league_id() is None:
             return  # /setup has not been run yet
 
-        active = await bot.nfl.active(now)
-        if active is not None:
-            await bot.nfl.warm(active.games)  # rosters for /pick; a no-op once loaded
-            await weekly.announce(bot, active, now)
-            await weekly.remind(bot, active, now)
-            await weekly.close_picks(bot, active, now)
+        plan = await bot.nfl.active(now)
+        if plan is not None:
+            await bot.nfl.warm(plan.games)  # rosters for /pick; a no-op once loaded
+            await weekly.announce(bot, plan, now)
+            for parlay in plan.parlays:
+                await weekly.remind(bot, parlay, now)
+                await weekly.close_picks(bot, parlay, now)
 
-        # An earlier week left open because the bot was off across its deadline.
-        for row in await bot.db.weeks():
-            is_active = active is not None and (row["season"], row["week"]) == (active.season, active.week)
+        # An earlier week's parlay left open because the bot was off across its deadline.
+        for row in await bot.db.parlays():
+            is_active = plan is not None and (row["season"], row["week"]) == (plan.season, plan.week)
             if row["announced_at"] and not row["closed_at"] and not is_active:
-                context = await bot.nfl.context(row["season"], row["week"])
-                if context is not None:
-                    await weekly.close_picks(bot, context, now)
+                parlay = await bot.nfl.parlay(row["season"], row["week"], row["card"])
+                if parlay is not None:
+                    await weekly.close_picks(bot, parlay, now)
 
         if self._last_track is None or now - self._last_track >= TRACK_EVERY:
             self._last_track = now
             await tracking.track(bot, now)
 
-        for row in await bot.db.weeks():
+        for row in await bot.db.parlays():
             if row["closed_at"] and not row["recap_at"]:
-                await weekly.recap(bot, row["season"], row["week"])
+                await weekly.recap(bot, row["season"], row["week"], row["card"])

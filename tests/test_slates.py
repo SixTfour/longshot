@@ -1,15 +1,20 @@
-"""Slates and holiday-week deadlines, checked against the real 2026 schedule (ESPN, saved 2026-10-11)."""
+"""Slates, the Thanksgiving split and deadlines, checked against the real 2026 schedule (ESPN, saved 2026-10-11)."""
 
 from dataclasses import dataclass
 from datetime import date, datetime
 
 import pytest
 
-from longshot.domain.schedule import ET, parse_day_time, week_times
+from longshot.config import SETTING_DEFAULTS
+from longshot.domain.cards import BONUS, MAIN, card_title, split_week
+from longshot.domain.schedule import ET, parse_day_time, parse_reminders, week_times
 from longshot.domain.slates import build_slates, holiday, thanksgiving
 
-TUE_10 = parse_day_time("tue 10:00")
-THU_19 = parse_day_time("thu 19:00")
+# The shipped defaults: announce Tuesday 10:00, main deadline Saturday 9 PM, bonus deadline Tuesday 9 PM.
+ANNOUNCE = parse_day_time(SETTING_DEFAULTS["announce"])
+DEADLINE = parse_day_time(SETTING_DEFAULTS["deadline"])
+BONUS_DEADLINE = parse_day_time(SETTING_DEFAULTS["bonus_deadline"])
+REMINDERS = parse_reminders(SETTING_DEFAULTS["reminders"])
 
 
 @dataclass(frozen=True)
@@ -108,54 +113,104 @@ def test_slate_keys_are_stable_and_ordered(week):
     assert build_slates(reversed(week(6))) == slates
 
 
-# --- deadlines in weeks that start early ---------------------------------------
+# --- which parlays a week has ----------------------------------------------------
 
 
 def first_kickoff(games):
     return min(game.kickoff for game in games if game.time_set)
 
 
-def test_ordinary_week_keeps_the_configured_deadline(week):
-    times = week_times(first_kickoff(week(6)), TUE_10, THU_19, [24, 7, 2])
-    assert times.deadline_at == et(2026, 10, 15, 19, 0)
-    assert times.moved_early is False
+def days(games):
+    return sorted({f"{game.kickoff.astimezone(ET):%a}" for game in games})
 
 
-def test_thanksgiving_week_deadline_moves_before_the_wednesday_game(week):
-    times = week_times(first_kickoff(week(12)), TUE_10, THU_19, [24, 7, 2])
-    # The week opens Wednesday 8:00 PM, before the usual Thursday 7:00 PM deadline.
-    assert times.moved_early is True
-    assert times.deadline_at == et(2026, 11, 25, 19, 0)
-    assert times.announce_at == et(2026, 11, 24, 10, 0)
+def test_an_ordinary_week_has_one_parlay(week):
+    cards = split_week(week(6))
+    assert list(cards) == [MAIN]
+    assert len(cards[MAIN]) == 14
+
+
+def test_thanksgiving_week_has_a_bonus_parlay_then_the_main_one(week):
+    cards = split_week(week(12))
+    assert list(cards) == [BONUS, MAIN]  # in the order they are played
+    assert days(cards[BONUS]) == ["Fri", "Thu", "Wed"]
+    assert days(cards[MAIN]) == ["Mon", "Sun"]
+    assert (len(cards[BONUS]), len(cards[MAIN])) == (5, 11)
+
+
+def test_christmas_and_opening_weeks_are_treated_like_any_other(week):
+    assert list(split_week(week(16))) == [MAIN]
+    assert len(split_week(week(16))[MAIN]) == 16  # games with no kickoff time yet stay in the week
+    assert list(split_week(week(1))) == [MAIN]
+
+
+def test_each_thanksgiving_parlay_has_its_own_slates(week):
+    cards = split_week(week(12))
+    assert shape(build_slates(cards[BONUS])) == [
+        ("Wednesday night", 1),
+        ("Thanksgiving early", 1),
+        ("Thanksgiving late", 1),
+        ("Thanksgiving night", 1),
+        ("Black Friday", 1),
+    ]
+    assert shape(build_slates(cards[MAIN])) == [
+        ("Sunday early", 6),
+        ("Sunday late", 3),
+        ("Sunday night", 1),
+        ("Monday night", 1),
+    ]
+
+
+def test_titles():
+    assert card_title(12, MAIN) == "Week 12"
+    assert card_title(12, BONUS) == "Thanksgiving bonus"
+
+
+# --- deadlines ---------------------------------------------------------------------
+
+
+def test_default_deadline_is_saturday_9pm_eastern(week):
+    games = week(6)
+    times = week_times(first_kickoff(games), ANNOUNCE, DEADLINE, REMINDERS)
+    assert times.announce_at == et(2026, 10, 13, 10, 0)
+    assert times.deadline_at == et(2026, 10, 17, 21, 0)
     assert times.reminders == {
-        24: et(2026, 11, 24, 19, 0),
-        7: et(2026, 11, 25, 12, 0),
-        2: et(2026, 11, 25, 17, 0),
+        24: et(2026, 10, 16, 21, 0),
+        7: et(2026, 10, 17, 14, 0),
+        2: et(2026, 10, 17, 19, 0),
     }
-    # Every game that week, Thanksgiving's three included, kicks off after the deadline.
-    assert all(game.kickoff >= times.deadline_at for game in week(12))
+    # Sunday's and Monday's games can be picked; Thursday night's cannot.
+    open_to_picks = [game for game in games if game.kickoff >= times.deadline_at]
+    assert days(open_to_picks) == ["Mon", "Sun"]
+    assert len(open_to_picks) == 13
 
 
-def test_christmas_week_needs_no_change_when_it_opens_thursday_night(week):
-    times = week_times(first_kickoff(week(16)), TUE_10, THU_19, [24])
-    assert times.moved_early is False
-    assert times.deadline_at == et(2026, 12, 24, 19, 0)
+def test_thanksgiving_bonus_deadline_is_tuesday_9pm_eastern(week):
+    games = week(12)
+    cards = split_week(games)
+    times = week_times(first_kickoff(games), ANNOUNCE, BONUS_DEADLINE, REMINDERS)
+    assert times.announce_at == et(2026, 11, 24, 10, 0)
+    assert times.deadline_at == et(2026, 11, 24, 21, 0)
+    # Every Wednesday, Thursday and Friday game kicks off after it.
+    assert all(game.kickoff >= times.deadline_at for game in cards[BONUS])
+    # Picks open at 10:00 that morning, so the 24-hour reminder is dropped.
+    assert times.reminders == {7: et(2026, 11, 24, 14, 0), 2: et(2026, 11, 24, 19, 0)}
 
 
-def test_opening_week_deadline_moves_before_the_wednesday_opener(week):
-    times = week_times(first_kickoff(week(1)), TUE_10, THU_19, [24, 7, 2])
-    assert times.moved_early is True
-    assert times.deadline_at == et(2026, 9, 9, 19, 20)
+def test_thanksgiving_week_main_parlay_keeps_the_saturday_deadline(week):
+    games = week(12)
+    times = week_times(first_kickoff(games), ANNOUNCE, DEADLINE, REMINDERS)
+    assert times.deadline_at == et(2026, 11, 28, 21, 0)
+    assert all(game.kickoff >= times.deadline_at for game in split_week(games)[MAIN])
 
 
-def test_a_weekend_deadline_is_never_moved(week):
-    # A league that only picks Sunday games has chosen to leave out everything before it.
-    times = week_times(first_kickoff(week(12)), TUE_10, parse_day_time("sun 12:00"), [2])
-    assert times.moved_early is False
-    assert times.deadline_at == et(2026, 11, 29, 12, 0)
+def test_a_deadline_never_moves_for_an_early_game(week):
+    # Week 1 opens on a Wednesday; a Thursday-evening deadline stays where it was set.
+    times = week_times(first_kickoff(week(1)), ANNOUNCE, parse_day_time("thu 19:00"), [])
+    assert times.deadline_at == et(2026, 9, 10, 19, 0)
+    assert first_kickoff(week(1)) < times.deadline_at
 
 
 def test_reminders_that_would_precede_the_announcement_are_dropped(week):
-    times = week_times(first_kickoff(week(12)), TUE_10, THU_19, [48, 24])
-    # 48 hours before Wednesday 7:00 PM is Monday, before picks open on Tuesday.
-    assert list(times.reminders) == [24]
+    times = week_times(first_kickoff(week(12)), ANNOUNCE, BONUS_DEADLINE, [48, 24, 2])
+    assert list(times.reminders) == [2]

@@ -9,7 +9,8 @@ from discord.ext import commands
 from ..bot import Longshot, commissioner_only
 from ..db import utcnow
 from ..domain.schedule import stamp
-from ..settings import KNOWN_SPORTSBOOKS, SPECS
+from ..domain.cards import BONUS, MAIN
+from ..settings import DEADLINES, KNOWN_SPORTSBOOKS, SPECS
 
 SETTING_CHOICES = [app_commands.Choice(name=spec.label, value=key) for key, spec in SPECS.items()]
 
@@ -29,21 +30,24 @@ class ConfigCog(commands.Cog, name="Config"):
 
     async def _effect(self, key: str) -> str:
         """What a change means for the week in progress."""
-        if key not in ("deadline", "announce", "reminders"):
-            if key == "sportsbook":
-                return "New lookups use it from now on. Picks already made keep the price they were made at."
+        if key == "sportsbook":
+            return "New lookups use it from now on. Picks already made keep the price they were made at."
+        if key != "announce" and key != "reminders" and key not in DEADLINES:
             return ""
-        now = utcnow()
-        active = await self.bot.nfl.active(now)
-        if active is None:
+        plan = await self.bot.nfl.active(utcnow())
+        if plan is None:
             return "It applies from the next week of the season."
-        row = await self.bot.db.week(active.season, active.week)
-        if key == "deadline":
-            if row and row["closed_at"]:
-                return f"Week {active.week} picks are already closed, so it applies from next week."
-            note = " (moved up, because that week's first game kicks off before it)" if active.times.moved_early else ""
-            return f"Week {active.week} picks now close {stamp(active.times.deadline_at, 'F')}{note}."
-        return f"It applies from Week {active.week + 1}." if row and row["announced_at"] else ""
+        if key not in DEADLINES:
+            announced = await self.bot.db.parlay(plan.season, plan.week, MAIN)
+            return f"It applies from Week {plan.week + 1}." if announced and announced["announced_at"] else ""
+
+        parlay = plan.parlay(BONUS if key == "bonus_deadline" else MAIN)
+        if parlay is None:
+            return "It applies in Thanksgiving week."
+        row = await self.bot.db.parlay(*parlay.key)
+        if row and row["closed_at"]:
+            return f"{parlay.title} picks are already closed, so it applies next time."
+        return f"{parlay.title} picks now close {stamp(parlay.times.deadline_at, 'F')}."
 
     @app_commands.command(name="config", description="Show or change league settings (deadline, sportsbook, and more)")
     @app_commands.describe(setting="The setting to change", value="Its new value")

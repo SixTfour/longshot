@@ -17,7 +17,8 @@ from . import redact
 # Starting values for the settings the commissioner can change with /config.
 # Each can be overridden once, at first run, by the matching DEFAULT_* variable.
 SETTING_DEFAULTS = {
-    "deadline": "thu 19:00",
+    "deadline": "sat 21:00",
+    "bonus_deadline": "tue 21:00",
     "announce": "tue 10:00",
     "reminders": "24,7,2",
     "sportsbook": "draftkings",

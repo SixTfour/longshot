@@ -23,7 +23,7 @@ class Stats(commands.Cog):
     async def _season(self) -> tuple[int, dict[int, MemberStats], dict[int, str], list[dict]]:
         season = await self.bot.nfl.season()
         members = await self.bot.db.members()
-        weeks = await self.bot.db.weeks(season)
+        weeks = await self.bot.db.parlays(season)
         stats = compute(members, await self.bot.db.all_picks(season), weeks, await self.bot.db.no_shows(season))
         names = {member["discord_id"]: member["team_name"] for member in members}
         return season, stats, names, weeks

@@ -1,6 +1,6 @@
 """The NFL schedule and rosters, from ESPN, with caching.
 
-Also answers "which week's parlay is live right now", which ESPN's own week
+Also answers "which week's parlays are live right now", which ESPN's own week
 pointer cannot: ESPN rolls over on Wednesday, the parlay cycle on Tuesday.
 """
 
@@ -13,6 +13,7 @@ from datetime import datetime, timedelta
 
 from .clients.espn import REGULAR_SEASON, Athlete, EspnClient, EspnError, Game, Scoreboard
 from .db import Database, utcnow
+from .domain.cards import MAIN, card_title, split_week
 from .domain.schedule import WeekTimes, week_times
 from .settings import Settings
 
@@ -24,11 +25,27 @@ ROSTER_TTL = timedelta(hours=24)
 
 
 @dataclass(frozen=True)
-class WeekContext:
+class Parlay:
+    """One parlay in one week: its games and its times."""
+
     season: int
     week: int
+    card: str  # 'main', or 'bonus' for the Thanksgiving extra
     games: list[Game]
     times: WeekTimes
+
+    @property
+    def key(self) -> tuple[int, int, str]:
+        return self.season, self.week, self.card
+
+    @property
+    def title(self) -> str:
+        return card_title(self.week, self.card)
+
+    @property
+    def loser_pays(self) -> bool:
+        """The main parlay is funded by the lowest scorer; the bonus one by the commissioner."""
+        return self.card == MAIN
 
     def game(self, espn_id: str) -> Game | None:
         return next((game for game in self.games if game.espn_id == espn_id), None)
@@ -48,6 +65,24 @@ class WeekContext:
             and game.kickoff > now
             and (late or game.kickoff >= self.times.deadline_at)
         ]
+
+
+@dataclass(frozen=True)
+class WeekPlan:
+    """A week and its parlays: one in most weeks, two in Thanksgiving week."""
+
+    season: int
+    week: int
+    games: list[Game]
+    announce_at: datetime
+    parlays: list[Parlay]  # in the order they are played
+
+    @property
+    def split(self) -> bool:
+        return len(self.parlays) > 1
+
+    def parlay(self, card: str) -> Parlay | None:
+        return next((parlay for parlay in self.parlays if parlay.card == card), None)
 
 
 class Nfl:
@@ -81,19 +116,23 @@ class Nfl:
     async def season(self) -> int:
         return (await self._pointer()).season
 
-    async def context(self, season: int, week: int) -> WeekContext | None:
+    async def plan(self, season: int, week: int) -> WeekPlan | None:
         games = await self.games(season, week)
         if not games:
             return None
-        times = week_times(
-            min((game.kickoff for game in games if game.time_set), default=games[0].kickoff),
-            await self._settings.announce(),
-            await self._settings.deadline(),
-            await self._settings.reminders(),
-        )
-        return WeekContext(season, week, games, times)
+        first_kickoff = min((game.kickoff for game in games if game.time_set), default=games[0].kickoff)
+        announce, reminders = await self._settings.announce(), await self._settings.reminders()
+        parlays = []
+        for card, card_games in split_week(games).items():
+            times = week_times(first_kickoff, announce, await self._settings.deadline(card), reminders)
+            parlays.append(Parlay(season, week, card, card_games, times))
+        return WeekPlan(season, week, games, parlays[0].times.announce_at, parlays)
 
-    async def active(self, now: datetime) -> WeekContext | None:
+    async def parlay(self, season: int, week: int, card: str) -> Parlay | None:
+        plan = await self.plan(season, week)
+        return plan.parlay(card) if plan else None
+
+    async def active(self, now: datetime) -> WeekPlan | None:
         """The latest regular-season week whose announcement time has passed."""
         pointer = await self._pointer()
         if pointer.season_type != REGULAR_SEASON:
@@ -102,9 +141,9 @@ class Nfl:
         for week in (pointer.week, pointer.week + 1):
             if not 1 <= week <= LAST_WEEK:
                 continue
-            context = await self.context(pointer.season, week)
-            if context and context.times.announce_at <= now:
-                best = context
+            plan = await self.plan(pointer.season, week)
+            if plan and plan.announce_at <= now:
+                best = plan
         return best
 
     # --- rosters ----------------------------------------------------------------
@@ -116,13 +155,6 @@ class Nfl:
             for team in (game.home, game.away):
                 found.extend(self._rosters.get(team.abbr, ([], None))[0])
         return found
-
-    def athlete(self, athlete_id: str) -> Athlete | None:
-        for roster, _ in self._rosters.values():
-            for athlete in roster:
-                if athlete.id == athlete_id:
-                    return athlete
-        return None
 
     def warmed(self, games: list[Game]) -> bool:
         return all(team.abbr in self._rosters for game in games for team in (game.home, game.away))
