@@ -26,6 +26,45 @@ def pick(discord_id=1, **overrides):
     return base | overrides
 
 
+def test_a_database_from_an_earlier_version_gains_the_new_columns(tmp_path):
+    async def scenario():
+        path = tmp_path / "old.db"
+        # A database as an earlier version made it: a parlay table with fewer columns, and a row in it.
+        import sqlite3
+
+        old = sqlite3.connect(path)
+        old.executescript(
+            """
+            CREATE TABLE parlays (
+                season INTEGER NOT NULL, week INTEGER NOT NULL, card TEXT NOT NULL DEFAULT 'main',
+                stake REAL, announced_at TEXT, reminders_sent TEXT NOT NULL DEFAULT '[]', closed_at TEXT,
+                PRIMARY KEY (season, week, card)
+            );
+            INSERT INTO parlays (season, week, stake) VALUES (2026, 6, 10);
+            """
+        )
+        old.commit()
+        old.close()
+
+        db = Database(path)
+        await db.connect()
+        row = await db.parlay(2026, 6, "main")
+        assert row["stake"] == 10  # what was there is untouched
+        # Columns added since exist, with their defaults.
+        assert (row["slip_message_id"], row["backfilled"], row["skipped"], row["slates_posted"]) == (None, 0, 0, "[]")
+        await db.update_parlay(2026, 6, "main", slip_message_id=1234, backfilled=1)
+        assert (await db.parlay(2026, 6, "main"))["slip_message_id"] == 1234
+        await db.close()
+
+        # Opening it again changes nothing and does not fail.
+        again = Database(path)
+        await again.connect()
+        assert (await again.parlay(2026, 6, "main"))["slip_message_id"] == 1234
+        await again.close()
+
+    run(scenario())
+
+
 def test_settings_state_and_cache():
     async def scenario():
         db = await fresh()

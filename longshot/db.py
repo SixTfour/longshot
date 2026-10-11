@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import sqlite3
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -155,7 +156,33 @@ class Database:
         self.conn.row_factory = aiosqlite.Row
         await self.conn.execute("PRAGMA journal_mode=WAL")
         await self.conn.executescript(SCHEMA)
+        await self._add_missing_columns()
         await self.conn.commit()
+
+    async def _add_missing_columns(self) -> None:
+        """Bring a database made by an earlier version up to the current columns.
+
+        CREATE TABLE IF NOT EXISTS leaves an existing table as it was, so a column
+        added to the schema since would otherwise be missing. Only added columns
+        are handled; nothing is ever removed or rewritten.
+        """
+        reference = sqlite3.connect(":memory:")
+        try:
+            reference.executescript(SCHEMA)
+            tables = [name for (name,) in reference.execute("SELECT name FROM sqlite_master WHERE type = 'table'")]
+            for table in tables:
+                if table.startswith("sqlite_"):
+                    continue
+                have = {row["name"] for row in await self._all(f"PRAGMA table_info({table})")}
+                for _, name, kind, not_null, default, primary_key in reference.execute(f"PRAGMA table_info({table})"):
+                    if name in have or primary_key:
+                        continue
+                    clause = f"{name} {kind}"
+                    if default is not None:
+                        clause += f"{' NOT NULL' if not_null else ''} DEFAULT {default}"
+                    await self.conn.execute(f"ALTER TABLE {table} ADD COLUMN {clause}")
+        finally:
+            reference.close()
 
     async def close(self) -> None:
         if self.conn is not None:
