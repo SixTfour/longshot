@@ -8,7 +8,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from .. import render, seasons, tracking
+from .. import render, seasons, slipboard, tracking
 from ..bot import Longshot, commissioner_only
 from ..db import iso, utcnow
 from ..domain.cards import BONUS, MAIN, card_title
@@ -81,9 +81,10 @@ class Slip(commands.Cog):
             picks = await self.bot.db.parlay_picks(*key)
             # A slip from an earlier year says which year.
             title = f"{row['season']} · {card_title(row['week'], row['card'])} parlay"
+            games = {game.espn_id: game for game in await self.bot.nfl.games(row["season"], row["week"])}
             embed = render.slip_embed(
                 row, picks, row["stake"] or await self.bot.settings.stake(),
-                title=title if row["season"] != this_season else None,
+                title=title if row["season"] != this_season else None, games=games,
             )
             if not row["closed_at"]:
                 picked = {pick["discord_id"] for pick in picks}
@@ -186,6 +187,7 @@ class Slip(commands.Cog):
         if row["recap_at"]:
             await self.bot.db.update_parlay(*key, recap_at=None, result=None, payout=None)
         await tracking.announce_grades(self.bot, *key, [] if status == PENDING else [pick["id"]])
+        await slipboard.refresh(self.bot, *key)
         text = (
             "will be graded by the bot again on its next check"
             if status == PENDING

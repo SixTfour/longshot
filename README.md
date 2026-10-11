@@ -15,7 +15,7 @@ It never places a bet or moves money. The commissioner still places the parlay a
 | 24, 7 and 2 hours before the deadline | Members without a pick are pinged in the channel and by DM. |
 | Deadline (Saturday 9:00 PM by default) | Picks close and the slip is posted. Anyone without a pick is named; no bet is chosen for them. |
 | After that | The commissioner places the parlay and records the real odds with `/placed`. |
-| During games | Each leg is posted as it is settled. The first miss kills the parlay and is called out. |
+| During games | The slip posted at the deadline updates itself every few minutes, with a progress bar per leg. Each leg is also posted as it is settled. The first miss kills the parlay and is called out. |
 | After each slate | While the parlay is alive: a summary of that slate's legs and what is next. |
 | After the last leg | If every leg hit: the result, every leg's status and the payout split. |
 | After the last game | If the parlay died: one final update with every leg's status. |
@@ -23,6 +23,28 @@ It never places a bet or moves money. The commissioner still places the parlay a
 A parlay is dead as soon as one leg misses. That miss is announced, and then the parlay goes quiet: its remaining legs are still graded, but nothing is posted until the last game in its window ends. Then one final update lists every leg's status. `/slip` shows the current state at any time.
 
 Only games that kick off after a parlay's deadline can be picked for it. With the default Saturday 9:00 PM deadline that means Sunday's and Monday's games. The same limit applies to the commissioner's `/pickfor`. The cycle runs for the fantasy season only.
+
+### The slip
+
+The slip posted when picks close is edited in place as the games are played, so it is always current and never adds a message. `/slip` shows the same view on demand.
+
+```
+🟩🟨🟨⬜  1 of 4 legs in
+
+✅ @Sheldon · Jalen Hurts 40+ rushing yards (+105)
+└ ▰▰▰▰▰▰▰▰▰▰  52 / 40
+⏳ @Dave · Saquon Barkley over 74.5 rushing yards (-112)
+└ ▰▰▰▰▰▰▱▱▱▱  48 / 74.5
+⏳ @Raj · PHI -2.5 (-110)
+└ PHI by 7 · covering
+⏳ @Tom · DEN moneyline (-140)
+└ Sun 4:25 PM ET
+```
+
+- **The top row** has one square per leg: green hit, red missed, yellow in play, white not started, black pushed or void, purple needing a ruling.
+- **An over** fills as the number approaches the line. **An under** fills as the room runs out, so a full bar there is bad news.
+- **A spread or moneyline** shows the score from that team's side. **A game not yet started** shows its kickoff time.
+- Once a parlay is dead the slip still keeps itself current, but no further messages are posted until the final update.
 
 ### Only during the fantasy season
 

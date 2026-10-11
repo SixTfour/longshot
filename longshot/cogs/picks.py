@@ -13,7 +13,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from .. import render
+from .. import render, slipboard
 from ..bot import Longshot, commissioner_only
 from ..clients.espn import Game
 from ..clients.odds import OddsApiError
@@ -221,6 +221,7 @@ class Picks(commands.Cog):
                 return
 
         _, replaced = await bot.db.save_pick(pick)
+        await slipboard.refresh(bot, *parlay.key)  # a late pick joins the slip already posted
         price = format_american(chosen.price)
         when = f"{game.label}, {stamp(game.kickoff, 'f')}"
         owner = "Your" if yours else f"{target.mention}'s"

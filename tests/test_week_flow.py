@@ -232,9 +232,14 @@ def test_a_missed_leg_kills_the_parlay(tmp_path, monkeypatch):
         )
         assert final.embed.title == "Week 6 final slip"
         assert final.embed.description.splitlines() == [
+            "🟥🟩🟩  2 of 3 legs in",
+            "",
             "❌ <@2> · **DEN -2.5** (-110)",
-            "✅ <@1> · **Bucky Irving 150+ rushing yards** (+320) · *finished with 165*",
+            "└ DEN won by 1 · did not cover",
+            "✅ <@1> · **Bucky Irving 150+ rushing yards** (+320)",
+            "└ ▰▰▰▰▰▰▰▰▰▰  165 / 150",
             "✅ <@3> · **Bucky Irving anytime TD** (-130)",
+            "└ scored",
         ]
         week = await world.week()
         assert (week["result"], week["payout"], bool(week["recap_at"])) == ("lost", None, True)

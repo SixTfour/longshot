@@ -13,7 +13,7 @@ import logging
 from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
-from . import render
+from . import render, slipboard
 from .clients.espn import EspnError, Game
 from .db import parse_iso
 from .domain.cards import card_title, split_week
@@ -163,6 +163,8 @@ async def track_week(bot: Longshot, season: int, week: int, *, quiet: bool = Fal
         silent = quiet or bool(row["backfilled"])
         await announce_grades(bot, season, week, card, settled, quiet=silent)
         await post_slates(bot, season, week, card, card_games.get(card, []), quiet=silent)
+        if not silent:
+            await slipboard.refresh(bot, season, week, card, games)
 
 
 def _first_miss(lost: list[Pick]) -> Pick:

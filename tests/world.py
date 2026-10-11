@@ -222,9 +222,25 @@ class Recorder:
     def __init__(self, mention: str = "#parlay"):
         self.mention = mention
         self.sent: list[SimpleNamespace] = []
+        self.edits: list[SimpleNamespace] = []  # edits to messages already sent: (message id, what changed)
+        self._messages: dict[int, SimpleNamespace] = {}  # every message ever sent, kept through clear()
 
     async def send(self, content=None, **kwargs):
-        self.sent.append(SimpleNamespace(content=content or "", **kwargs))
+        message = SimpleNamespace(content=content or "", id=1000 + len(self._messages), **kwargs)
+        self.sent.append(message)
+        self._messages[message.id] = message
+        return message
+
+    def get_partial_message(self, message_id: int) -> SimpleNamespace:
+        async def edit(**changes):
+            self.edits.append(SimpleNamespace(id=message_id, **changes))
+            vars(self._messages[message_id]).update(changes)
+
+        return SimpleNamespace(id=message_id, edit=edit)
+
+    def message(self, message_id: int) -> SimpleNamespace:
+        """A sent message as it reads now, after any edits."""
+        return self._messages[message_id]
 
     @property
     def texts(self) -> list[str]:

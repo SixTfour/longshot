@@ -16,7 +16,7 @@ import discord
 from discord import app_commands
 from discord.ext import commands
 
-from .. import render, tracking, weekly
+from .. import render, slipboard, tracking, weekly
 from ..bot import Longshot, commissioner_only
 from ..clients.espn import Athlete, EspnError, Game
 from ..db import iso, utcnow
@@ -225,6 +225,7 @@ class Backfill(commands.Cog):
             )
         settled = await tracking.settle_legs(bot, game, [entered])
         await tracking.announce_grades(bot, *key, settled, quiet=silent)
+        await slipboard.refresh(bot, *key)
         if silent:
             # Work the parlay's recorded result out again with this leg in it.
             await bot.db.update_parlay(*key, recap_at=None, result=None, payout=None)

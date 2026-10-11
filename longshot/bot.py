@@ -53,6 +53,7 @@ class Longshot(commands.Bot):
         self.scheduler = Scheduler(self)
         self.web: aiohttp.ClientSession | None = None
         self._fantasy: tuple[str, FantasySeason, datetime] | None = None
+        self.slips_showing: dict[tuple[int, int, str], object] = {}  # what each live slip last displayed
 
     async def wire(self) -> None:
         """Open the database, build the clients and register every command. Does not touch Discord."""

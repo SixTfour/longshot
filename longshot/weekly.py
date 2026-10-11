@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Any
 
 import discord
 
-from . import render
+from . import render, slipboard
 from .clients.sleeper import SleeperError
 from .db import iso, parse_iso
 from .domain.cards import MAIN, card_scope, card_title, split_week
@@ -246,11 +246,13 @@ async def close_picks(
         )
     if picks:
         lines.append("Commissioner: place the parlay, then record the real odds with `/placed`.")
-    await channel.send(
+    message = await channel.send(
         "\n".join(lines),
         embed=render.slip_embed(row, picks, stake, title=f"{parlay.title} slip"),
         allowed_mentions=render.PING_USERS,
     )
+    # This message is the live slip: it is edited in place as the games are played.
+    await bot.db.update_parlay(*parlay.key, slip_message_id=message.id)
     return True
 
 
@@ -329,4 +331,5 @@ async def recap(
             headline, embed=render.slip_embed(row, picks, stake, title=f"{title} final slip"),
             allowed_mentions=render.QUIET,
         )
+        await slipboard.refresh(bot, season, week, card)
     return True
