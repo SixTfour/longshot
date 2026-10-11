@@ -19,7 +19,7 @@ It never places a bet or moves money. The commissioner still places the parlay a
 | After each slate | A summary of that slate's legs, whether the parlay is alive, and what is next. |
 | After the last leg | The result, and the payout split if it hit. |
 
-Only games that kick off after the deadline can be picked. With the default Saturday 9:00 PM deadline that means Sunday's and Monday's games. The cycle runs for the 18 weeks of the regular season.
+Only games that kick off after a parlay's deadline can be picked for it. With the default Saturday 9:00 PM deadline that means Sunday's and Monday's games. The same limit applies to the commissioner's `/pickfor`. The cycle runs for the 18 weeks of the regular season.
 
 ### Thanksgiving week
 
@@ -55,7 +55,7 @@ Slates come from the real schedule: games that kick off within 90 minutes of eac
 | `/setup league_id channel` | Commissioner | Connect the Sleeper league and choose the channel. |
 | `/link member team`, `/unlink member` | Commissioner | Tie a Discord member to a Sleeper team. |
 | `/config [setting] [value]` | Commissioner | Show or change the deadlines, sportsbook, announcement time, reminders, stake and line cache. |
-| `/pickfor member who bet line` | Commissioner | Enter or replace a member's pick, including after the deadline. |
+| `/pickfor member who bet line` | Commissioner | Enter or replace a member's pick, including after the deadline, on any of that parlay's games that has not kicked off. |
 | `/placed odds [parlay]` | Commissioner | Record that the parlay was placed, with the sportsbook's odds. |
 | `/paid member [week]` | Commissioner | Mark a stake as collected. |
 | `/grade member result [week] [parlay]` | Commissioner | Settle a leg by hand, or correct one. |

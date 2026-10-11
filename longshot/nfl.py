@@ -50,11 +50,11 @@ class Parlay:
     def game(self, espn_id: str) -> Game | None:
         return next((game for game in self.games if game.espn_id == espn_id), None)
 
-    def pickable(self, now: datetime, *, late: bool = False) -> list[Game]:
-        """Games a pick can be made on.
+    def pickable(self, now: datetime) -> list[Game]:
+        """Games a pick can be made on: this parlay's games that kick off after its deadline and have not started.
 
-        Normally those kicking off after the deadline. A late pick entered by
-        the commissioner can use any game that has not started. A game whose
+        The window is the same for everyone. A late pick entered by the
+        commissioner after the deadline is still limited to it. A game whose
         kickoff time is still to be announced cannot be picked.
         """
         return [
@@ -63,7 +63,7 @@ class Parlay:
             if game.state == "pre"
             and game.time_set
             and game.kickoff > now
-            and (late or game.kickoff >= self.times.deadline_at)
+            and game.kickoff >= self.times.deadline_at
         ]
 
 

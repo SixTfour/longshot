@@ -87,7 +87,11 @@ class Picks(commands.Cog):
     # --- what can be picked right now -------------------------------------------
 
     async def _window(self, late: bool) -> Window:
-        """The live week, and which of its parlays are taking picks right now."""
+        """The live week, and which of its parlays are taking picks right now.
+
+        late is the commissioner's /pickfor: it can add to a parlay whose deadline
+        has passed, but only from the games still left in that parlay's window.
+        """
         now = utcnow()
         plan = await self.bot.nfl.active(now)
         if plan is None:
@@ -101,7 +105,7 @@ class Picks(commands.Cog):
             if not late and (row["closed_at"] or now >= parlay.times.deadline_at):
                 closed.append(parlay.title)
             else:
-                taking.append((parlay, parlay.pickable(now, late=late)))
+                taking.append((parlay, parlay.pickable(now)))
         if taking:
             return Window(plan, taking, None)
         reason = f"{' and '.join(closed)} picks are closed." if closed else "Picks are not open right now."

@@ -31,6 +31,13 @@ def test_the_default_deadline_is_saturday_night(tmp_path, monkeypatch):
         assert "could not find that player or team" in await world.pick(2, "t:DEN", *HOME_SPREAD)
         assert "Your Week 6 pick is **Bucky Irving 150+ rushing yards**" in await world.pick(1, *IRVING_150)
 
+        # The commissioner's /pickfor has the same window: Thursday's game is not offered or accepted.
+        for_commissioner = names(await world.picks._who_choices("", late=True))
+        assert for_commissioner == listed
+        assert names(await world.picks._who_choices("den", late=True)) == []
+        assert "could not find that player or team" in await world.pick(2, "t:DEN", *HOME_SPREAD, by=99)
+        assert set(await world.statuses()) == {1}
+
         # Thursday's game comes and goes without closing anything.
         channel.clear()
         world.espn.set(TNF, state="post", home=24, away=20)
@@ -100,14 +107,20 @@ def test_thanksgiving_week_runs_a_bonus_parlay_and_the_weekly_one(tmp_path, monk
         assert "could not find that player or team" in await world.pick(3, "t:CHI", "h2h", "away")
         assert "Your Week 12 pick is **Bucky Irving anytime TD**" in await world.pick(2, *IRVING_TD)
 
+        # The commissioner can still add a late bonus pick, and it joins the bonus parlay.
+        reply = await world.pick(3, "t:CHI", "totals", "over:43.5", by=99)
+        assert "<@3>'s Thanksgiving bonus pick is **CHI @ DET over 43.5 points**" in reply
+        assert channel.last().endswith("Thanksgiving bonus: 3 of 3 picks in")
+
         # Thanksgiving: Detroit wins by 7. Both bonus legs hit, so the bonus parlay cashes.
         channel.clear()
         world.espn.set(TURKEY_GAME, state="post", home=27, away=20)
         await at(et(2026, 11, 26, 16, 30))
         assert "✅ **Leg hit** · <@1> · DET -2.5 (-110)" in channel.texts[0]
         assert "✅ **Leg hit** · <@2> · DET moneyline (-140)" in channel.texts[0]
+        assert "✅ **Leg hit** · <@3> · CHI @ DET over 43.5 points (-110) · *47 points*" in channel.texts[0]
         recap = channel.sent[-1]
-        bonus_pays = total_return(10, parlay_decimal([-110, -140]))
+        bonus_pays = total_return(10, parlay_decimal([-110, -140, -110]))
         assert "THE THANKSGIVING BONUS PARLAY HIT" in recap.content and f"${bonus_pays:,.2f}" in recap.content
         assert recap.embed.title == "Thanksgiving bonus final slip"
         assert len(channel.sent) == 2
@@ -132,9 +145,10 @@ def test_thanksgiving_week_runs_a_bonus_parlay_and_the_weekly_one(tmp_path, monk
         await at(et(2026, 12, 1, 0, 6))
         assert len(channel.sent) == 2  # legs, then the recap; nothing repeats
 
-        # Each parlay counts on its own: two legs each for members 1 and 2, two missed deadlines for member 3.
+        # Each parlay counts on its own: two legs each for members 1 and 2. Member 3 missed both
+        # deadlines, and has the one leg the commissioner entered late.
         stats = compute(await db.members(), await db.all_picks(SEASON), await db.parlays(SEASON), await db.no_shows(SEASON))
-        assert [(stats[n].legs, stats[n].won) for n in (1, 2, 3)] == [(2, 2), (2, 2), (0, 0)]
+        assert [(stats[n].legs, stats[n].won) for n in (1, 2, 3)] == [(2, 2), (2, 2), (1, 1)]
         assert (stats[3].no_shows, stats[2].low_scores) == (2, 1)
 
         slip = world.bot.get_cog("Slip")

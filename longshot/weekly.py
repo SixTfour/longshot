@@ -206,7 +206,7 @@ async def close_picks(bot: Longshot, parlay: Parlay, now: datetime, *, force: bo
     if missing:
         lines.append(
             f"No pick from {render.mentions(missing)}. Commissioner: a late pick can still be entered with "
-            "`/pickfor` for any game that has not kicked off."
+            "`/pickfor`, on any of this parlay's games that has not kicked off."
         )
     if picks:
         lines.append("Commissioner: place the parlay, then record the real odds with `/placed`.")
