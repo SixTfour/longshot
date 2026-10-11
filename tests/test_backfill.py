@@ -173,6 +173,42 @@ def test_backfills_that_are_refused(tmp_path, monkeypatch):
     play(tmp_path, monkeypatch, scenario)
 
 
+def test_slip_command_shows_a_backfilled_week_with_progress_bars(tmp_path, monkeypatch):
+    async def scenario(world, at):
+        cog = world.bot.get_cog("Backfill")
+        tnf, bucs = played_out(world)
+        await at(AFTER_THE_WEEK, tick=False)
+        await cog.record(COMMISSIONER, 1, WEEK, bucs, f"p:{IRVING}", "player_rush_yds", "+320", "150+")
+        await cog.record(COMMISSIONER, 2, WEEK, tnf, "t:DEN", "spreads", "-110", "-2.5")
+        await cog.record(COMMISSIONER, 3, WEEK, bucs, f"p:{IRVING}", "player_receptions", "-120", "under 1.5")
+
+        # Run /slip the way Discord would, and read what it sends back.
+        sent = {}
+
+        async def send_message(content=None, **kwargs):
+            sent.update(kwargs, content=content)
+
+        interaction = type("Interaction", (), {})()
+        interaction.response = type("Response", (), {"send_message": staticmethod(send_message)})()
+        slip = world.bot.get_cog("Slip")
+        await slip.slip.callback(slip, interaction, WEEK, None)
+
+        (embed,) = sent["embeds"]
+        assert embed.title == "Week 6 parlay"
+        assert embed.description.splitlines() == [
+            "🟩🟩🟥  2 of 3 legs in",
+            "",
+            "✅ <@2> · **DEN -2.5** (-110)",
+            "└ DEN won by 4 · covered",
+            "✅ <@1> · **Bucky Irving 150+ rushing yards** (+320)",
+            "└ ▰▰▰▰▰▰▰▰▰▰  165 / 150",
+            "❌ <@3> · **Bucky Irving under 1.5 receptions** (-120)",
+            "└ ▰▰▰▰▰▰▰▰▰▰  2 · over the line",
+        ]
+
+    play(tmp_path, monkeypatch, scenario)
+
+
 # --- a parlay the bot is running ----------------------------------------------------------
 
 
