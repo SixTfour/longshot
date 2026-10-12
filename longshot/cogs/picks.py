@@ -201,20 +201,21 @@ class Picks(commands.Cog):
         parlay = window.parlay_for(game)  # the game decides which parlay the pick joins
         pick = pick_row(parlay.key, target.id, subject, chosen, interaction.user.id)
 
+        names = await bot.team_names()
         for other in await bot.db.parlay_picks(*parlay.key):
             if other["discord_id"] == target.id:
                 continue
             clash = conflict(pick, other)
             if clash == "same":
                 await say(
-                    f"{render.mention(other['discord_id'])} already has that exact leg. Nothing was saved; "
+                    f"**{render.team(other['discord_id'], names)}** already has that exact leg. Nothing was saved; "
                     "choose something else.",
                     allowed_mentions=render.QUIET,
                 )
                 return
             if clash == "opposite":
                 await say(
-                    f"That is the direct opposite of {render.mention(other['discord_id'])}'s leg "
+                    f"That is the direct opposite of **{render.team(other['discord_id'], names)}**'s leg "
                     f"(**{other['label']}**), and both cannot be in one parlay. Nothing was saved.",
                     allowed_mentions=render.QUIET,
                 )
@@ -237,12 +238,13 @@ class Picks(commands.Cog):
             tally = f"{count} of {total} picks in"
             if window.plan.split:
                 tally = f"{parlay.title}: {tally}"
+            who = f"**{render.team(target.id, names)}**"
             if not yours:
-                lead = f"📝 The commissioner entered a pick for {target.mention}:"
+                lead = f"📝 The commissioner entered a pick for {who}:"
             elif replaced:
-                lead = f"🔁 {target.mention} changed their pick to"
+                lead = f"🔁 {who} changed their pick to"
             else:
-                lead = f"🔒 {target.mention} locked in"
+                lead = f"🔒 {who} locked in"
             await channel.send(
                 f"{lead} **{pick['label']}** ({price}) · {when} · {tally}",
                 allowed_mentions=render.QUIET,
@@ -302,6 +304,7 @@ class Picks(commands.Cog):
     async def mypick(self, interaction: discord.Interaction) -> None:
         now = utcnow()
         plan = await self.bot.nfl.active(now)
+        names = await self.bot.team_names()
         lines = []
         for parlay in plan.parlays if plan else []:
             row = await self.bot.db.parlay(*parlay.key)
@@ -310,7 +313,7 @@ class Picks(commands.Cog):
             pick = await self.bot.db.member_pick(*parlay.key, interaction.user.id)
             if pick is not None:
                 lines.append(
-                    f"**{parlay.title}:** {render.slip_line(pick)}\n{pick['game']}, "
+                    f"**{parlay.title}:** {render.slip_line(pick, names)}\n{pick['game']}, "
                     f"{stamp(parse_iso(pick['kickoff']), 'f')}"
                 )
             elif row["closed_at"] or now >= parlay.times.deadline_at:

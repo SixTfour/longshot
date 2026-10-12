@@ -43,11 +43,6 @@ async def record_loser(bot: Longshot, season: int, week: int, team: dict[str, An
     await bot.db.set_debt(season, week, team["roster_id"], team["team_name"], stake, discord_id)
 
 
-async def _team_text(bot: Longshot, team: dict[str, Any]) -> str:
-    member = await bot.db.member_by_roster(team["roster_id"])
-    return f"**{team['team_name']}** ({render.mention(member['discord_id'])})" if member else f"**{team['team_name']}**"
-
-
 async def warn_stale_league(bot: Longshot, league_year: int, season: int, week: int) -> None:
     """Tell the commissioner, once a week until it is fixed, that the connected league is from another year."""
     mark = f"{season}:{week}"
@@ -112,12 +107,12 @@ async def announce(bot: Longshot, plan: WeekPlan, now: datetime, *, force: bool 
             payer = f"**{tied[0]['team_name']}**"
             target = "the Sunday and Monday parlay" if plan.split else "this week's parlay"
             lines.append(
-                f"{await _team_text(bot, tied[0])} had the lowest score of Week {week - 1} with "
+                f"**{tied[0]['team_name']}** had the lowest score of Week {week - 1} with "
                 f"**{low[0]:g}** points and owes **{format_money(stake)}** for {target}."
             )
             view = paid_view(season, week)
         else:
-            names = ", ".join([await _team_text(bot, team) for team in tied])
+            names = ", ".join(f"**{team['team_name']}**" for team in tied)
             await bot.db.update_parlay(
                 season, week, MAIN, stake=stake, loser_points=low[0],
                 tied_roster_ids=json.dumps([team["roster_id"] for team in tied]),
@@ -159,7 +154,7 @@ async def announce(bot: Longshot, plan: WeekPlan, now: datetime, *, force: bool 
         pings.extend(members)
         lines.append(f"Find your bet on {book}, then lock it in with `/pick`.")
         if members:
-            lines.append(render.mentions(members))
+            lines.append(render.mentions(members))  # the one line of mentions: it is what notifies everyone
 
     await channel.send(
         "\n".join(lines),
@@ -191,9 +186,10 @@ async def remind(bot: Longshot, parlay: Parlay, now: datetime, *, force: bool = 
     channel = await bot.league_channel()
     if not missing or channel is None:
         return False
+    # Named by team in the text; mentioned on a line of their own so that they are notified.
     await channel.send(
-        f"⏰ {parlay.title} picks close {stamp(deadline, 'R')}. Still waiting on {render.mentions(missing)}. "
-        "Use `/pick`.",
+        f"⏰ {parlay.title} picks close {stamp(deadline, 'R')}. Still waiting on "
+        f"{render.teams(missing, await bot.team_names())}. Use `/pick`.\n{render.mentions(missing)}",
         allowed_mentions=render.PING_USERS,
     )
     for discord_id in missing:
@@ -238,18 +234,19 @@ async def close_picks(
     picks = await bot.db.parlay_picks(*parlay.key)
     row = await bot.db.parlay(*parlay.key)
     stake = row["stake"] or await bot.settings.stake()
+    names = await bot.team_names()
     lines = [f"🔒 **{parlay.title} picks are closed.**"]
     if missing:
         lines.append(
-            f"No pick from {render.mentions(missing)}. Commissioner: a late pick can still be entered with "
+            f"No pick from {render.teams(missing, names)}. Commissioner: a late pick can still be entered with "
             "`/pickfor`, on any of this parlay's games that has not kicked off."
         )
     if picks:
         lines.append("Commissioner: place the parlay, then record the real odds with `/placed`.")
     message = await channel.send(
         "\n".join(lines),
-        embed=render.slip_embed(row, picks, stake, title=f"{parlay.title} slip"),
-        allowed_mentions=render.PING_USERS,
+        embed=render.slip_embed(row, picks, stake, names, title=f"{parlay.title} slip"),
+        allowed_mentions=render.QUIET,
     )
     # This message is the live slip: it is edited in place as the games are played.
     await bot.db.update_parlay(*parlay.key, slip_message_id=message.id)
@@ -298,6 +295,7 @@ async def recap(
 
     title = card_title(week, card)
     stake = row["stake"] or await bot.settings.stake()
+    names = await bot.team_names()
     hits = sum(1 for pick in picks if pick["status"] == WON)
     misses = [pick for pick in picks if pick["status"] == LOST]
     payout = None
@@ -314,7 +312,7 @@ async def recap(
     elif status == LOST:
         headline = f"**{title} parlay: final.** {hits} of {len(picks)} legs hit."
         if len(misses) == 1:
-            headline += f" It would have cashed without {render.mention(misses[0]['discord_id'])}'s leg."
+            headline += f" It would have cashed without {render.team(misses[0]['discord_id'], names)}'s leg."
         else:
             headline += f" {len(misses)} legs missed."
     elif status == VOID:
@@ -328,7 +326,7 @@ async def recap(
     if channel is not None:
         row = await bot.db.parlay(season, week, card)
         await channel.send(
-            headline, embed=render.slip_embed(row, picks, stake, title=f"{title} final slip"),
+            headline, embed=render.slip_embed(row, picks, stake, names, title=f"{title} final slip"),
             allowed_mentions=render.QUIET,
         )
         await slipboard.refresh(bot, season, week, card)

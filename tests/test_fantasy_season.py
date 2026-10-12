@@ -165,7 +165,7 @@ def test_the_lowest_scorer_pays_in_the_last_week_before_the_playoffs(tmp_path, m
     async def scenario(world, at):
         world.sleeper.settings.update(playoff_week_start=WEEK + 1)
         await at(TUE_ANNOUNCE)
-        assert "**Team 2** (<@2>)" in world.channel.last() and "owes **$10**" in world.channel.last()
+        assert "**Team 2** had the lowest score" in world.channel.last() and "owes **$10**" in world.channel.last()
         assert (await world.bot.db.debt(SEASON, WEEK))["roster_id"] == 2
 
     play(tmp_path, monkeypatch, scenario)

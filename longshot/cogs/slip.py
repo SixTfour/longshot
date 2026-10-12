@@ -74,6 +74,7 @@ class Slip(commands.Cog):
             await interaction.response.send_message("There is no parlay on record for that week.", ephemeral=True)
             return
         members = [member["discord_id"] for member in await self.bot.db.members()]
+        names = await self.bot.team_names()
         this_season = await self.bot.nfl.season()
         embeds = []
         for row in rows:
@@ -83,14 +84,14 @@ class Slip(commands.Cog):
             title = f"{row['season']} · {card_title(row['week'], row['card'])} parlay"
             games = {game.espn_id: game for game in await self.bot.nfl.games(row["season"], row["week"])}
             embed = render.slip_embed(
-                row, picks, row["stake"] or await self.bot.settings.stake(),
+                row, picks, row["stake"] or await self.bot.settings.stake(), names,
                 title=title if row["season"] != this_season else None, games=games,
             )
             if not row["closed_at"]:
                 picked = {pick["discord_id"] for pick in picks}
                 waiting = [discord_id for discord_id in members if discord_id not in picked]
                 if waiting:
-                    embed.add_field(name="Waiting on", value=render.mentions(waiting), inline=False)
+                    embed.add_field(name="Waiting on", value=render.teams(waiting, names), inline=False)
                 parlay = await self.bot.nfl.parlay(*key)
                 if parlay:
                     embed.add_field(name="Picks close", value=stamp(parlay.times.deadline_at, "R"), inline=False)

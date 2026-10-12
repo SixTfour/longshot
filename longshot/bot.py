@@ -190,6 +190,10 @@ class Longshot(commands.Bot):
         permissions = getattr(interaction.user, "guild_permissions", None)
         return bool(permissions and permissions.manage_guild)
 
+    async def team_names(self) -> dict[int, str]:
+        """Each linked member's fantasy team name, by Discord id. Messages name members by team."""
+        return {member["discord_id"]: member["team_name"] for member in await self.db.members()}
+
     async def tell_commissioner(self, text: str) -> None:
         """A private note to the commissioner, falling back to the league channel."""
         commissioner = await self.db.get_state("commissioner_id")

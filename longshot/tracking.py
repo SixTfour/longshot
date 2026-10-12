@@ -184,6 +184,7 @@ async def announce_grades(
         return
     channel = None if quiet else await bot.league_channel()
     title = card_title(week, card)
+    names = await bot.team_names()
     picks = {pick["id"]: pick for pick in await bot.db.parlay_picks(season, week, card)}
     fresh = [picks[pick_id] for pick_id in pick_ids if pick_id in picks]
     lost = [pick for pick in picks.values() if pick["status"] == LOST]
@@ -197,7 +198,7 @@ async def announce_grades(
         unruled = [pick for pick in fresh if pick["status"] == REVIEW]
         if unruled and not quiet:
             # The parlay is over, but the leg still needs settling for the stats.
-            legs = "; ".join(f"{render.mention(pick['discord_id'])}: {render.leg(pick)}" for pick in unruled)
+            legs = "; ".join(f"{render.team(pick['discord_id'], names)}: {render.leg(pick)}" for pick in unruled)
             await bot.tell_commissioner(
                 f"The {title} parlay is already dead, but I could not grade a leg. Settle it with `/grade` so "
                 f"the stats are right: {legs}"
@@ -210,7 +211,7 @@ async def announce_grades(
         tail = f" · *{note}*" if note and pick["status"] != REVIEW else ""
         lines.append(
             f"{render.EMOJI[pick['status']]} **{_HEADLINE[pick['status']]}** · "
-            f"{render.mention(pick['discord_id'])} · {render.leg(pick)}{tail}"
+            f"{render.team(pick['discord_id'], names)} · {render.leg(pick)}{tail}"
         )
     if any(pick["status"] == REVIEW for pick in fresh):
         lines.append("Commissioner: settle the ❓ legs with `/grade`.")
@@ -226,9 +227,9 @@ async def announce_grades(
         await bot.db.update_parlay(season, week, card, killer_pick_id=first["id"])
         if channel is not None:
             await channel.send(
-                f"💀 **The {title} parlay is dead.** {render.mention(first['discord_id'])}'s leg missed: "
+                f"💀 **The {title} parlay is dead.** {render.team(first['discord_id'], names)}'s leg missed: "
                 f"{render.leg(first)}.",
-                allowed_mentions=render.PING_USERS,
+                allowed_mentions=render.QUIET,
             )
 
 
@@ -240,14 +241,14 @@ def _standing(picks: list[Pick]) -> str:
     return f"🟢 **Parlay: alive.** {hits} of {len(live)} legs in, {to_go} to go."
 
 
-def _up_next(picks: list[Pick], slates: list[Slate], after: Slate) -> str | None:
+def _up_next(picks: list[Pick], slates: list[Slate], after: Slate, names: render.Names) -> str | None:
     for slate in slates:
         if slate.start <= after.start:
             continue
         waiting = [pick for pick in picks if pick["espn_event_id"] in slate.game_ids and pick["status"] in UNSETTLED]
         if waiting:
             legs = "leg" if len(waiting) == 1 else "legs"
-            who = render.mentions(pick["discord_id"] for pick in waiting)
+            who = ", ".join(render.team(pick["discord_id"], names) for pick in waiting)
             return f"**Next:** {slate.name}, {stamp(slate.start, 'f')} · {len(waiting)} {legs}: {who}"
     return None
 
@@ -268,6 +269,7 @@ async def post_slates(
     by_id = {game.espn_id: game for game in games}
     slates = build_slates(games)
     picks = await bot.db.parlay_picks(season, week, card)
+    names = await bot.team_names()
     channel = None if quiet else await bot.league_channel()
     changed = False
 
@@ -282,9 +284,9 @@ async def post_slates(
         if not legs or not still_open or dead or channel is None:
             continue
         lines = [f"### {slate.name} slate · {card_title(week, card)}"]
-        lines += [render.slip_line(pick) for pick in legs]
+        lines += [render.slip_line(pick, names) for pick in legs]
         lines.append(_standing(picks))
-        up_next = _up_next(picks, slates, slate)
+        up_next = _up_next(picks, slates, slate, names)
         if up_next:
             lines.append(up_next)
         await channel.send("\n".join(lines), allowed_mentions=render.QUIET)

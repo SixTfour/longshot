@@ -65,7 +65,7 @@ def test_thanksgiving_week_runs_a_bonus_parlay_and_the_weekly_one(tmp_path, monk
         assert len(channel.sent) == 1
         text = channel.last()
         assert "## Week 12 parlays" in text and "**Two parlays this week**" in text
-        assert "**Team 2** (<@2>)" in text and "owes **$10** for the Sunday and Monday parlay" in text
+        assert "**Team 2** had the lowest score" in text and "owes **$10** for the Sunday and Monday parlay" in text
         assert (
             "- **Thanksgiving bonus**: Wednesday, Thursday and Friday games, paid for by the commissioner. Picks close"
             in text
@@ -94,14 +94,14 @@ def test_thanksgiving_week_runs_a_bonus_parlay_and_the_weekly_one(tmp_path, monk
         channel.clear()
         await at(et(2026, 11, 24, 19, 1))
         assert len(channel.sent) == 1
-        assert channel.last().startswith("⏰ Thanksgiving bonus picks close") and "waiting on <@3>" in channel.last()
+        assert channel.last().startswith("⏰ Thanksgiving bonus picks close") and "waiting on **Team 3**" in channel.last()
 
         # Tuesday 9:00 PM: the bonus parlay closes; the weekly one stays open.
         channel.clear()
         await at(et(2026, 11, 24, 21, 1))
         assert len(channel.sent) == 1
         closing = channel.sent[0]
-        assert "Thanksgiving bonus picks are closed" in closing.content and "No pick from <@3>" in closing.content
+        assert "Thanksgiving bonus picks are closed" in closing.content and "No pick from **Team 3**" in closing.content
         assert closing.embed.title == "Thanksgiving bonus slip"
         assert (await world.parlay(BONUS))["closed_at"] and (await world.parlay(MAIN))["closed_at"] is None
         assert "could not find that player or team" in await world.pick(3, "t:CHI", "h2h", "away")
@@ -116,9 +116,9 @@ def test_thanksgiving_week_runs_a_bonus_parlay_and_the_weekly_one(tmp_path, monk
         channel.clear()
         world.espn.set(TURKEY_GAME, state="post", home=27, away=20)
         await at(et(2026, 11, 26, 16, 30))
-        assert "✅ **Leg hit** · <@1> · DET -2.5 (-110)" in channel.texts[0]
-        assert "✅ **Leg hit** · <@2> · DET moneyline (-140)" in channel.texts[0]
-        assert "✅ **Leg hit** · <@3> · CHI @ DET over 43.5 points (-110) · *47 points*" in channel.texts[0]
+        assert "✅ **Leg hit** · Team 1 · DET -2.5 (-110)" in channel.texts[0]
+        assert "✅ **Leg hit** · Team 2 · DET moneyline (-140)" in channel.texts[0]
+        assert "✅ **Leg hit** · Team 3 · CHI @ DET over 43.5 points (-110) · *47 points*" in channel.texts[0]
         recap = channel.sent[-1]
         bonus_pays = total_return(10, parlay_decimal([-110, -140, -110]))
         assert "THE THANKSGIVING BONUS PARLAY HIT" in recap.content and f"${bonus_pays:,.2f}" in recap.content
@@ -131,7 +131,7 @@ def test_thanksgiving_week_runs_a_bonus_parlay_and_the_weekly_one(tmp_path, monk
         # Friday and Saturday 9:00 PM: the weekly parlay's own reminder and deadline.
         channel.clear()
         await at(et(2026, 11, 27, 21, 1))
-        assert channel.last().startswith("⏰ Week 12 picks close") and "waiting on <@3>" in channel.last()
+        assert channel.last().startswith("⏰ Week 12 picks close") and "waiting on **Team 3**" in channel.last()
         await at(et(2026, 11, 28, 21, 1))
         closing = channel.sent[-1]
         assert "Week 12 picks are closed" in closing.content and closing.embed.title == "Week 12 slip"

@@ -44,6 +44,22 @@ def mentions(discord_ids: Iterable[int]) -> str:
     return " ".join(mention(discord_id) for discord_id in discord_ids)
 
 
+# Messages name a member by their fantasy team. A mention is only used where the
+# point is to notify someone (the weekly announcement and the reminders), and it
+# goes on a line of its own after the text.
+Names = Mapping[int, str]  # Discord id -> team name
+
+
+def team(discord_id: int, names: Names) -> str:
+    """The team name a member is known by. Someone no longer linked to a team falls back to a mention."""
+    return names.get(discord_id) or mention(discord_id)
+
+
+def teams(discord_ids: Iterable[int], names: Names) -> str:
+    """'**Team A**, **Team B**'"""
+    return ", ".join(f"**{team(discord_id, names)}**" for discord_id in discord_ids)
+
+
 def leg(pick: Pick) -> str:
     """'Jalen Hurts 40+ rushing yards (+105)'"""
     return f"{pick['label']} ({format_american(pick['price'])})"
@@ -68,10 +84,11 @@ def outcome(pick: Pick) -> str:
     return ""
 
 
-def slip_line(pick: Pick) -> str:
+def slip_line(pick: Pick, names: Names) -> str:
+    """A leg on one line: '✅ **Team A** · Jalen Hurts 40+ rushing yards (+105) · *finished with 52*'"""
     note = outcome(pick)
     tail = f" · *{note}*" if note else ""
-    return f"{EMOJI[pick['status']]} {mention(pick['discord_id'])} · **{pick['label']}** ({format_american(pick['price'])}){tail}"
+    return f"{EMOJI[pick['status']]} **{team(pick['discord_id'], names)}** · {leg(pick)}{tail}"
 
 
 def estimate(picks: Iterable[Pick], stake: float) -> tuple[int, float] | None:
@@ -197,9 +214,9 @@ def progress(pick: Pick, game: Game | None = None) -> str:
     return f"{bar(value, needed)}  {value:g} so far · {spare:g} to spare"
 
 
-def slip_block(pick: Pick, game: Game | None = None) -> str:
-    """A leg on the slip: who and what on one line, its progress underneath."""
-    head = f"{EMOJI[pick['status']]} {mention(pick['discord_id'])} · **{pick['label']}** ({format_american(pick['price'])})"
+def slip_block(pick: Pick, names: Names, game: Game | None = None) -> str:
+    """A leg on the slip: whose it is and what it is on one line, its progress underneath."""
+    head = f"{EMOJI[pick['status']]} **{team(pick['discord_id'], names)}** · {leg(pick)}"
     detail = progress(pick, game)
     return f"{head}\n└ {detail}" if detail else head
 
@@ -219,20 +236,22 @@ def slip_embed(
     parlay: Mapping[str, Any],
     picks: list[Pick],
     stake: float,
+    names: Names,
     *,
     title: str | None = None,
     games: Mapping[str, Game] | None = None,
 ) -> discord.Embed:
     """A parlay's legs, each with its progress, and the odds.
 
-    parlay is its database row. games, by ESPN id, says which games are under
-    way; without it a leg counts as in play once it has progress recorded.
+    parlay is its database row. names gives each member's team name. games, by
+    ESPN id, says which games are under way; without it a leg counts as in play
+    once it has progress recorded.
     """
     status = parlay_status(pick["status"] for pick in picks)
     colour = {WON: GREEN, LOST: RED, VOID: GREY}.get(status, GOLD)
     embed = discord.Embed(title=title or f"{card_title(parlay['week'], parlay['card'])} parlay", colour=colour)
     if picks:
-        blocks = [slip_block(pick, (games or {}).get(pick["espn_event_id"])) for pick in picks]
+        blocks = [slip_block(pick, names, (games or {}).get(pick["espn_event_id"])) for pick in picks]
         embed.description = "\n".join([parlay_bar(picks, games), "", *blocks])
         embed.add_field(name=f"{len(picks)} legs", value=odds_summary(parlay, picks, stake), inline=False)
     else:

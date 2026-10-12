@@ -167,7 +167,7 @@ def test_scores_from_last_seasons_league_are_not_used(tmp_path, monkeypatch):
         world.sleeper.season = "2026"
         world.bot.forget_league()  # what /setup does
         await at(TUE_NOON)
-        assert "**Team 2** (<@2>)" in channel.last() and "owes **$10**" in channel.last()
+        assert "**Team 2** had the lowest score" in channel.last() and "owes **$10**" in channel.last()
         assert (await db.debt(SEASON, WEEK))["roster_id"] == 2
         assert len(world.dms[99].sent) == 1
 
@@ -178,7 +178,7 @@ def test_a_league_that_does_not_state_its_season_is_used_as_before(tmp_path, mon
     async def scenario(world, at):
         world.sleeper.season = None
         await at(TUE_ANNOUNCE)
-        assert "**Team 2** (<@2>)" in world.channel.last()
+        assert "**Team 2** had the lowest score" in world.channel.last()
         assert world.dms == {}
 
     play(tmp_path, monkeypatch, scenario)

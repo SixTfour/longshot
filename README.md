@@ -31,13 +31,13 @@ The slip posted when picks close is edited in place as the games are played, so 
 ```
 🟩🟨🟨⬜  1 of 4 legs in
 
-✅ @Sheldon · Jalen Hurts 40+ rushing yards (+105)
+✅ Hurts So Good · Jalen Hurts 40+ rushing yards (+105)
 └ ▰▰▰▰▰▰▰▰▰▰  52 / 40
-⏳ @Dave · Saquon Barkley over 74.5 rushing yards (-112)
+⏳ Kelce Grammar · Saquon Barkley over 74.5 rushing yards (-112)
 └ ▰▰▰▰▰▰▱▱▱▱  48 / 74.5
-⏳ @Raj · PHI -2.5 (-110)
+⏳ Run CMC · PHI -2.5 (-110)
 └ PHI by 7 · covering
-⏳ @Tom · DEN moneyline (-140)
+⏳ Mahomes Alone · DEN moneyline (-140)
 └ Sun 4:25 PM ET
 ```
 
@@ -45,6 +45,10 @@ The slip posted when picks close is edited in place as the games are played, so 
 - **An over** fills as the number approaches the line. **An under** fills as the room runs out, so a full bar there is bad news.
 - **A spread or moneyline** shows the score from that team's side. **A game not yet started** shows its kickoff time.
 - Once a parlay is dead the slip still keeps itself current, but no further messages are posted until the final update.
+
+### How members are named
+
+Longshot's messages name a member by their Sleeper team name: the slip, picks, leg results, slate updates, the leaderboard and the ledger. A Discord mention is used only where the point is to notify someone: the weekly announcement mentions everyone, and a reminder mentions the members who have not picked. Those mentions sit on a line of their own under the text. Replies to commissioner commands still mention the member they are about, and `/members` shows which Discord member has which team.
 
 ### Only during the fantasy season
 

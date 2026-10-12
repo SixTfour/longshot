@@ -63,7 +63,7 @@ def test_a_week_where_the_parlay_hits(tmp_path, monkeypatch):
         assert len(channel.sent) == 1
         opening = channel.sent[0]
         assert "Week 6 parlay" in opening.content
-        assert "**Team 2** (<@2>)" in opening.content and "78.32" in opening.content and "$10" in opening.content
+        assert "**Team 2** had the lowest score" in opening.content and "78.32" in opening.content and "$10" in opening.content
         assert "Picks are open" in opening.content and "DraftKings" in opening.content
         assert opening.view is not None  # the Mark paid button
         debt = await world.bot.db.debt(SEASON, WEEK)
@@ -75,19 +75,19 @@ def test_a_week_where_the_parlay_hits(tmp_path, monkeypatch):
         await at(TUE_NOON, tick=False)
         reply = await world.pick(1, *IRVING_150)
         assert "Bucky Irving 150+ rushing yards" in reply and "+320 at DraftKings" in reply
-        assert channel.last().startswith("🔒 <@1> locked in **Bucky Irving 150+ rushing yards** (+320)")
+        assert channel.last().startswith("🔒 **Team 1** locked in **Bucky Irving 150+ rushing yards** (+320)")
         assert "1 of 3 picks in" in channel.last()
 
         await world.pick(2, "t:DEN", "h2h", "home")
         assert "**DEN moneyline** (-140)" in channel.last()
         await world.pick(2, *DEN_SPREAD)
-        assert channel.last().startswith("🔁 <@2> changed their pick to **DEN -2.5** (-110)")
+        assert channel.last().startswith("🔁 **Team 2** changed their pick to **DEN -2.5** (-110)")
         assert "2 of 3 picks in" in channel.last()
 
         # Wednesday evening: 24 hours out, only the member without a pick is nudged.
         channel.clear()
         await at(WED_EVENING)
-        assert len(channel.sent) == 1 and "Still waiting on <@3>" in channel.last()
+        assert len(channel.sent) == 1 and "Still waiting on **Team 3**" in channel.last()
         assert list(world.dms) == [3] and "pick is due" in world.dms[3].last()
         await at(WED_EVENING)
         assert len(channel.sent) == 1
@@ -96,7 +96,7 @@ def test_a_week_where_the_parlay_hits(tmp_path, monkeypatch):
         channel.clear()
         await at(THU_DEADLINE)
         closing = channel.sent[0]
-        assert "Week 6 picks are closed" in closing.content and "No pick from <@3>" in closing.content
+        assert "Week 6 picks are closed" in closing.content and "No pick from **Team 3**" in closing.content
         assert closing.embed.title == "Week 6 slip" and "2 legs" in closing.embed.fields[0].name
         assert [row["discord_id"] for row in await world.bot.db.no_shows(SEASON)] == [3]
         assert set(await world.statuses()) == {1, 2}
@@ -105,7 +105,7 @@ def test_a_week_where_the_parlay_hits(tmp_path, monkeypatch):
         # The commissioner enters a late pick for the no-show.
         reply = await world.pick(3, *IRVING_TD, by=99)
         assert "<@3>'s Week 6 pick is **Bucky Irving anytime TD**" in reply
-        assert channel.last().startswith("📝 The commissioner entered a pick for <@3>")
+        assert channel.last().startswith("📝 The commissioner entered a pick for **Team 3**")
 
         # Thursday night: nothing is settled at half-time.
         channel.clear()
@@ -117,12 +117,12 @@ def test_a_week_where_the_parlay_hits(tmp_path, monkeypatch):
         # Denver wins by 4 and covers 2.5. The slate update follows.
         world.espn.set(TNF, state="post", home=24, away=20)
         await at(THU_LATE)
-        assert channel.texts[0] == "✅ **Leg hit** · <@2> · DEN -2.5 (-110)"
+        assert channel.texts[0] == "✅ **Leg hit** · Team 2 · DEN -2.5 (-110)"
         slate = channel.texts[1]
         assert slate.startswith("### Thursday night slate · Week 6")
-        assert "✅ <@2> · **DEN -2.5** (-110)" in slate
+        assert "✅ **Team 2** · DEN -2.5 (-110)" in slate
         assert "**Parlay: alive.** 1 of 3 legs in, 2 to go." in slate
-        assert "**Next:** Sunday early" in slate and "2 legs: <@1> <@3>" in slate
+        assert "**Next:** Sunday early" in slate and "2 legs: Team 1, Team 3" in slate
         await at(THU_LATE)
         assert len(channel.sent) == 2  # no repeats
 
@@ -130,7 +130,7 @@ def test_a_week_where_the_parlay_hits(tmp_path, monkeypatch):
         channel.clear()
         world.espn.set(BUCS_GAME, state="in", home=14, away=10)
         await at(SUN_EARLY_LIVE)
-        assert channel.texts == ["✅ **Leg hit** · <@3> · Bucky Irving anytime TD (-130)"]
+        assert channel.texts == ["✅ **Leg hit** · Team 3 · Bucky Irving anytime TD (-130)"]
         statuses = await world.statuses()
         assert (statuses[1], statuses[3]) == ("pending", "won")
         assert (await world.bot.db.member_pick(SEASON, WEEK, MAIN, 1))["stat_value"] == 165
@@ -139,7 +139,7 @@ def test_a_week_where_the_parlay_hits(tmp_path, monkeypatch):
         channel.clear()
         world.espn.set(BUCS_GAME, state="post", home=24, away=16)
         await at(SUN_EARLY_DONE)
-        assert channel.texts[0] == "✅ **Leg hit** · <@1> · Bucky Irving 150+ rushing yards (+320) · *finished with 165*"
+        assert channel.texts[0] == "✅ **Leg hit** · Team 1 · Bucky Irving 150+ rushing yards (+320) · *finished with 165*"
         recap = channel.sent[-1]
         expected = total_return(10, parlay_decimal([320, -110, -130]))
         assert "THE WEEK 6 PARLAY HIT" in recap.content and f"${expected:,.2f}" in recap.content
@@ -196,8 +196,8 @@ def test_a_missed_leg_kills_the_parlay(tmp_path, monkeypatch):
         await at(THU_LATE)
         # The miss and the death are announced. There is no slate update for a dead parlay.
         assert channel.texts == [
-            "❌ **Leg missed** · <@2> · DEN -2.5 (-110)",
-            "💀 **The Week 6 parlay is dead.** <@2>'s leg missed: DEN -2.5 (-110).",
+            "❌ **Leg missed** · Team 2 · DEN -2.5 (-110)",
+            "💀 **The Week 6 parlay is dead.** Team 2's leg missed: DEN -2.5 (-110).",
         ]
         killer = (await world.week())["killer_pick_id"]
         assert (await world.bot.db.pick(killer))["discord_id"] == 2
@@ -228,17 +228,17 @@ def test_a_missed_leg_kills_the_parlay(tmp_path, monkeypatch):
         assert len(channel.sent) == 1
         final = channel.sent[0]
         assert final.content == (
-            "**Week 6 parlay: final.** 2 of 3 legs hit. It would have cashed without <@2>'s leg."
+            "**Week 6 parlay: final.** 2 of 3 legs hit. It would have cashed without Team 2's leg."
         )
         assert final.embed.title == "Week 6 final slip"
         assert final.embed.description.splitlines() == [
             "🟥🟩🟩  2 of 3 legs in",
             "",
-            "❌ <@2> · **DEN -2.5** (-110)",
+            "❌ **Team 2** · DEN -2.5 (-110)",
             "└ DEN won by 1 · did not cover",
-            "✅ <@1> · **Bucky Irving 150+ rushing yards** (+320)",
+            "✅ **Team 1** · Bucky Irving 150+ rushing yards (+320)",
             "└ ▰▰▰▰▰▰▰▰▰▰  165 / 150",
-            "✅ <@3> · **Bucky Irving anytime TD** (-130)",
+            "✅ **Team 3** · Bucky Irving anytime TD (-130)",
             "└ scored",
         ]
         week = await world.week()
@@ -293,7 +293,7 @@ def test_overturning_the_miss_brings_the_parlay_back(tmp_path, monkeypatch):
         await db.grade_pick(killer, "won", None, "Settled by the commissioner", "99")
         await tracking.announce_grades(world.bot, SEASON, WEEK, MAIN, [killer])
         assert channel.texts == [
-            "✅ **Leg hit** · <@2> · DEN -2.5 (-110)\n🟢 **The Week 6 parlay is alive again.**"
+            "✅ **Leg hit** · Team 2 · DEN -2.5 (-110)\n🟢 **The Week 6 parlay is alive again.**"
         ]
         assert (await world.week())["killer_pick_id"] is None
 
@@ -301,7 +301,7 @@ def test_overturning_the_miss_brings_the_parlay_back(tmp_path, monkeypatch):
         channel.clear()
         world.espn.set(BUCS_GAME, state="post", home=24, away=16)
         await at(SUN_EARLY_DONE)
-        assert channel.texts[0].startswith("✅ **Leg hit** · <@1>")
+        assert channel.texts[0].startswith("✅ **Leg hit** · Team 1")
         assert "THE WEEK 6 PARLAY HIT" in channel.last()
 
     play(tmp_path, monkeypatch, scenario)
@@ -336,7 +336,7 @@ def test_picks_that_are_refused(tmp_path, monkeypatch):
         before = len(world.channel.sent)
 
         assert "already has that exact leg" in await world.pick(3, *IRVING_150)
-        assert "direct opposite of <@2>'s leg" in await world.pick(3, "t:SEA", "spreads", "away:2.5")
+        assert "direct opposite of **Team 2**'s leg" in await world.pick(3, "t:SEA", "spreads", "away:2.5")
         assert "not linked" in await world.pick(7, *IRVING_150)
         assert "could not find that player or team" in await world.pick(3, "p:000", "player_rush_yds", "over:1.5")
         assert "Choose the bet" in await world.pick(3, f"p:{IRVING}", "h2h", "home")

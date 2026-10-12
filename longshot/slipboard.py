@@ -38,7 +38,9 @@ async def refresh(
 
     picks = await bot.db.parlay_picks(season, week, card)
     stake = row["stake"] or await bot.settings.stake()
-    embed = render.slip_embed(row, picks, stake, title=f"{card_title(week, card)} slip", games=games)
+    embed = render.slip_embed(
+        row, picks, stake, await bot.team_names(), title=f"{card_title(week, card)} slip", games=games
+    )
     key = (season, week, card)
     showing = (embed.description, embed.colour, [field.value for field in embed.fields])
     if bot.slips_showing.get(key) == showing:

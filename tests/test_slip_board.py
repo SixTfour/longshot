@@ -92,8 +92,8 @@ def test_other_legs():
 
 
 def test_a_leg_is_two_lines_on_the_slip():
-    assert render.slip_block(leg(value=31)).splitlines() == [
-        "⏳ <@1> · **Jalen Hurts 40+ rushing yards** (+105)",
+    assert render.slip_block(leg(value=31), {1: "Team 1"}).splitlines() == [
+        "⏳ **Team 1** · Jalen Hurts 40+ rushing yards (+105)",
         "└ ▰▰▰▰▰▰▰▱▱▱  31 / 40",
     ]
 
@@ -126,9 +126,9 @@ def test_the_slip_is_edited_in_place_as_games_are_played(tmp_path, monkeypatch):
         assert slip_lines(world, slip_id) == [
             "⬜⬜  0 of 2 legs in",
             "",
-            "⏳ <@2> · **DEN -2.5** (-110)",
+            "⏳ **Team 2** · DEN -2.5 (-110)",
             "└ Thu 8:15 PM ET",
-            "⏳ <@1> · **Bucky Irving 150+ rushing yards** (+320)",
+            "⏳ **Team 1** · Bucky Irving 150+ rushing yards (+320)",
             "└ Sun 1:00 PM ET",
         ]
 
@@ -138,7 +138,7 @@ def test_the_slip_is_edited_in_place_as_games_are_played(tmp_path, monkeypatch):
         await at(THU_HALFTIME)
         assert len(channel.edits) == 1 and channel.edits[0].id == slip_id
         assert slip_lines(world, slip_id)[:4] == [
-            "🟨⬜  0 of 2 legs in", "", "⏳ <@2> · **DEN -2.5** (-110)", "└ DEN by 4 · covering",
+            "🟨⬜  0 of 2 legs in", "", "⏳ **Team 2** · DEN -2.5 (-110)", "└ DEN by 4 · covering",
         ]
         assert len(channel.sent) == posted
         await at(THU_HALFTIME)
@@ -147,7 +147,7 @@ def test_the_slip_is_edited_in_place_as_games_are_played(tmp_path, monkeypatch):
         world.espn.set(TNF, state="post", home=24, away=20)
         await at(THU_LATE)
         assert slip_lines(world, slip_id)[:4] == [
-            "🟩⬜  1 of 2 legs in", "", "✅ <@2> · **DEN -2.5** (-110)", "└ DEN won by 4 · covered",
+            "🟩⬜  1 of 2 legs in", "", "✅ **Team 2** · DEN -2.5 (-110)", "└ DEN won by 4 · covered",
         ]
 
         # Sunday, mid-game: the yardage leg is past its line but waits for the whistle.
@@ -155,7 +155,7 @@ def test_the_slip_is_edited_in_place_as_games_are_played(tmp_path, monkeypatch):
         await at(SUN_EARLY_LIVE)
         assert slip_lines(world, slip_id)[0] == "🟩🟨  1 of 2 legs in"
         assert slip_lines(world, slip_id)[-2:] == [
-            "⏳ <@1> · **Bucky Irving 150+ rushing yards** (+320)", "└ ▰▰▰▰▰▰▰▰▰▰  165 / 150",
+            "⏳ **Team 1** · Bucky Irving 150+ rushing yards (+320)", "└ ▰▰▰▰▰▰▰▰▰▰  165 / 150",
         ]
 
         world.espn.set(BUCS_GAME, state="post", home=24, away=16)
@@ -179,7 +179,7 @@ def test_a_late_pick_joins_the_posted_slip(tmp_path, monkeypatch):
 
         await world.pick(3, *IRVING_TD, by=99)
         assert slip_lines(world, slip_id)[0] == "⬜⬜  0 of 2 legs in"
-        assert "⏳ <@3> · **Bucky Irving anytime TD** (-130)" in slip_lines(world, slip_id)
+        assert "⏳ **Team 3** · Bucky Irving anytime TD (-130)" in slip_lines(world, slip_id)
         assert world.channel.message(slip_id).embed.fields[0].name == "2 legs"
 
     play(tmp_path, monkeypatch, scenario)

@@ -58,11 +58,9 @@ class Ledger(commands.Cog):
         season = await seasons.resolve(self.bot, season)
         debts = await self.bot.db.debts(season)
         weeks = await self.bot.db.parlays(season)
-        by_roster = {member["roster_id"]: member["discord_id"] for member in await self.bot.db.members()}
 
         def who(debt: dict) -> str:
-            discord_id = debt["discord_id"] or by_roster.get(debt["roster_id"])
-            return render.mention(discord_id) if discord_id else f"**{debt['team_name']}**"
+            return f"**{debt['team_name']}**"  # the team's name when the debt was recorded
 
         unpaid = [debt for debt in debts if not debt["paid_at"]]
         collected = sum(debt["amount"] for debt in debts if debt["paid_at"])

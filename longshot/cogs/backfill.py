@@ -219,7 +219,8 @@ class Backfill(commands.Cog):
         if channel is not None:
             # A leg added to a parlay still in play is something the league should see.
             await channel.send(
-                f"📝 The commissioner entered a pick for {target}: **{entered['label']}** "
+                f"📝 The commissioner entered a pick for **{render.team(target_id, await bot.team_names())}**: "
+                f"**{entered['label']}** "
                 f"({format_american(price)}) · {game.label}",
                 allowed_mentions=render.QUIET,
             )

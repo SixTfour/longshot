@@ -198,11 +198,11 @@ def test_slip_command_shows_a_backfilled_week_with_progress_bars(tmp_path, monke
         assert embed.description.splitlines() == [
             "🟩🟩🟥  2 of 3 legs in",
             "",
-            "✅ <@2> · **DEN -2.5** (-110)",
+            "✅ **Team 2** · DEN -2.5 (-110)",
             "└ DEN won by 4 · covered",
-            "✅ <@1> · **Bucky Irving 150+ rushing yards** (+320)",
+            "✅ **Team 1** · Bucky Irving 150+ rushing yards (+320)",
             "└ ▰▰▰▰▰▰▰▰▰▰  165 / 150",
-            "❌ <@3> · **Bucky Irving under 1.5 receptions** (-120)",
+            "❌ **Team 3** · Bucky Irving under 1.5 receptions (-120)",
             "└ ▰▰▰▰▰▰▰▰▰▰  2 · over the line",
         ]
 
@@ -230,8 +230,8 @@ def test_backfilling_a_leg_into_a_live_parlay_is_announced(tmp_path, monkeypatch
         reply = await cog.record(COMMISSIONER, 3, WEEK, tnf, "t:DEN", "h2h", "-140")
         assert "It **won**." in reply and "Nothing was posted" not in reply
         assert channel.texts == [
-            "📝 The commissioner entered a pick for <@3>: **DEN moneyline** (-140) · SEA @ DEN",
-            "✅ **Leg hit** · <@3> · DEN moneyline (-140)",
+            "📝 The commissioner entered a pick for **Team 3**: **DEN moneyline** (-140) · SEA @ DEN",
+            "✅ **Leg hit** · Team 3 · DEN moneyline (-140)",
         ]
         assert (await world.week())["backfilled"] == 0
 
@@ -258,8 +258,8 @@ def test_backfilling_a_losing_leg_into_a_live_parlay_kills_it(tmp_path, monkeypa
         channel.clear()
         await at(et(2026, 10, 16, 12, 0), tick=False)
         await cog.record(COMMISSIONER, 2, WEEK, world.espn.games[TNF].espn_id, "t:SEA", "h2h", "+120")
-        assert channel.texts[1] == "❌ **Leg missed** · <@2> · SEA moneyline (+120)"
-        assert channel.texts[2].startswith("💀 **The Week 6 parlay is dead.** <@2>'s leg missed")
+        assert channel.texts[1] == "❌ **Leg missed** · Team 2 · SEA moneyline (+120)"
+        assert channel.texts[2].startswith("💀 **The Week 6 parlay is dead.** Team 2's leg missed")
 
     play(tmp_path, monkeypatch, scenario)
 
