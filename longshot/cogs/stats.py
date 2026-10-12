@@ -74,19 +74,15 @@ class Stats(commands.Cog):
         if not parlays:
             await interaction.response.send_message(f"No parlays are on record for {season}.", ephemeral=True)
             return
-        rows = [f"{'#':>2}  {'Team':<18} {'Hit':>4}  {'W-L':>5}  {'Strk':>4}  {'Kills':>5}  {'Low':>3}"]
-        for position, entry in enumerate(ranked(stats), start=1):
-            name = names.get(entry.discord_id, "(unlinked)")[:18]
-            rows.append(
-                f"{position:>2}  {name:<18} {_rate(entry):>4}  {f'{entry.won}-{entry.lost}':>5}  "
-                f"{entry.streak:>4}  {entry.kills:>5}  {entry.low_scores:>3}"
-            )
         played = [parlay for parlay in parlays if parlay["result"]]
         hit = sum(1 for parlay in played if parlay["result"] == WON)
-        embed = discord.Embed(title=f"{season} leaderboard", description="```\n" + "\n".join(rows) + "\n```")
+        embed = discord.Embed(
+            title=f"{season} leaderboard", description="\n".join(render.leaderboard_lines(ranked(stats), names))
+        )
         embed.set_footer(
-            text=f"Parlays hit: {hit} of {len(played)} · Strk = current run of hits · Kills = first miss on a slip · "
-            "Low = weeks as lowest scorer"
+            text=f"Parlays hit: {hit} of {len(played)}\n"
+            "Ranked by legs hit. 💀 = their leg was the first to miss. 📉 = weeks as lowest scorer. "
+            "⏰ = deadlines missed."
         )
         await interaction.response.send_message(embed=embed)
 

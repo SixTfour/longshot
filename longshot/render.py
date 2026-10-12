@@ -13,6 +13,7 @@ from .db import parse_iso
 from .domain.cards import card_title
 from .domain.grading import DROPPED, LOST, PENDING, PUSH, REVIEW, VOID, WON, parlay_status
 from .domain.schedule import kickoff_text
+from .domain.stats import MemberStats
 from .domain.odds_math import (
     american_to_decimal,
     decimal_to_american,
@@ -96,6 +97,39 @@ def odds_summary(week: Mapping[str, Any], picks: list[Pick], stake: float) -> st
         f"**{format_money(pays)}**\n*An estimate from each leg's price. The sportsbook's parlay price can differ, "
         "especially with two legs from one game.*"
     )
+
+
+MEDALS = {1: "🥇", 2: "🥈", 3: "🥉"}
+NAME_LIMIT = 24  # a team name longer than this would push the record onto a second line on a phone
+
+
+def leaderboard_lines(standings: Iterable[MemberStats], names: Mapping[int, str]) -> list[str]:
+    """The leaderboard as short lines of ordinary text.
+
+    A fixed-width table wraps mid-row on a phone, so each team gets one line
+    with its hit rate and record, and a second with whatever else it has to
+    show. A team with nothing to add has just the one line.
+    """
+    lines = []
+    for position, entry in enumerate(standings, start=1):
+        name = names.get(entry.discord_id, "Unlinked member")
+        if len(name) > NAME_LIMIT:
+            name = name[: NAME_LIMIT - 1].rstrip() + "…"
+        rate = "no legs yet" if entry.hit_rate is None else f"**{entry.hit_rate:.0%}** ({entry.won}-{entry.lost})"
+        lines.append(f"{MEDALS.get(position, f'**{position}.**')} **{name}** · {rate}")
+
+        extras = []
+        if entry.streak >= 2:
+            extras.append(f"🔥 {entry.streak} in a row")
+        if entry.kills:
+            extras.append(f"💀 killed {entry.kills}")
+        if entry.low_scores:
+            extras.append(f"📉 low score {entry.low_scores}")
+        if entry.no_shows:
+            extras.append(f"⏰ missed {entry.no_shows}")
+        if extras:
+            lines.append("└ " + " · ".join(extras))
+    return lines
 
 
 def bar(done: float, needed: float) -> str:

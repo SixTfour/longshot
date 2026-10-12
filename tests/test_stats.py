@@ -1,4 +1,5 @@
-from longshot.domain.stats import compute, ranked
+from longshot import render
+from longshot.domain.stats import MemberStats, compute, ranked
 
 MEMBERS = [
     {"discord_id": 1, "roster_id": 11},
@@ -71,3 +72,42 @@ def test_picks_from_someone_no_longer_linked_are_still_counted():
     stats = compute(MEMBERS[:2], PICKS, WEEKS, NO_SHOWS)
     assert stats[3].legs == 3
     assert stats[3].low_scores == 0  # the roster is no longer tied to them
+
+
+# --- how the leaderboard is written out ---------------------------------------------
+
+
+def test_leaderboard_is_short_lines_that_fit_a_phone():
+    stats = compute(MEMBERS + [{"discord_id": 4, "roster_id": 14}], PICKS, WEEKS, NO_SHOWS)
+    names = {1: "Team One", 2: "Team Two", 3: "Team Three", 4: "Team Four"}
+    lines = render.leaderboard_lines(ranked(stats), names)
+    assert lines == [
+        "🥇 **Team One** · **100%** (3-0)",
+        "└ 🔥 3 in a row",
+        "🥈 **Team Two** · **50%** (1-1)",
+        "└ 💀 killed 1 · 📉 low score 2 · ⏰ missed 1",
+        "🥉 **Team Three** · **50%** (1-1)",
+        "└ 💀 killed 1 · 📉 low score 1 · ⏰ missed 1",
+        "**4.** **Team Four** · no legs yet",
+    ]
+    # No table and no code block: a phone wraps ordinary text between words, not mid-row.
+    assert not any("```" in line for line in lines)
+    assert max(len(line) for line in lines) <= 48
+
+
+def test_leaderboard_trims_long_team_names_and_omits_empty_details():
+    entries = [MemberStats(1, legs=4, won=2, lost=2, streak=1), MemberStats(2, legs=1, won=0, lost=1)]
+    names = {1: "The Team With An Extremely Long Name"}
+    assert render.leaderboard_lines(entries, names) == [
+        "🥇 **The Team With An Extrem…** · **50%** (2-2)",  # 24 characters; and a run of one is no streak
+        "🥈 **Unlinked member** · **0%** (0-1)",
+    ]
+
+
+def test_leaderboard_for_a_full_league_fits_in_one_message():
+    entries = [
+        MemberStats(n, legs=17, won=10, lost=7, streak=4, kills=3, low_scores=2, no_shows=1) for n in range(1, 13)
+    ]
+    names = {n: "A Fairly Long Team Name!" for n in range(1, 13)}
+    text = "\n".join(render.leaderboard_lines(entries, names))
+    assert len(text) < 4096  # Discord's limit for the body of a card
