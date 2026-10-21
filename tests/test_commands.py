@@ -5,10 +5,12 @@ import asyncio
 from world import build
 
 EXPECTED = {
-    "setup", "link", "unlink", "members", "config", "pick", "pickfor", "mypick", "backfill", "slip", "placed", "grade",
+    "setup", "link", "unlink", "members", "config", "pick", "pickfor", "mypick", "backfill", "slip", "placed", "grade", "injury",
     "paid", "ledger", "stats", "leaderboard", "admin",
 }
-COMMISSIONER_ONLY = {"setup", "link", "unlink", "config", "pickfor", "backfill", "placed", "grade", "paid", "admin"}
+COMMISSIONER_ONLY = {
+    "setup", "link", "unlink", "config", "pickfor", "backfill", "placed", "grade", "injury", "paid", "admin",
+}
 
 
 def _walk(payload: dict):

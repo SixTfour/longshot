@@ -90,6 +90,8 @@ CREATE TABLE IF NOT EXISTS picks (
     note          TEXT,
     graded_at     TEXT,
     graded_by     TEXT,
+    injury        TEXT,  -- the commissioner's /injury ruling: 'injured', 'not_injured', or NULL to let ESPN decide
+    held_since    TEXT,  -- when a miss started waiting on an injury ruling
     entered_by    INTEGER NOT NULL,
     created_at    TEXT NOT NULL,
     UNIQUE (season, week, card, discord_id)
@@ -354,9 +356,22 @@ class Database:
     ) -> None:
         graded_at = None if status == "pending" else iso(utcnow())
         await self._run(
-            "UPDATE picks SET status = ?, stat_value = ?, note = ?, graded_at = ?, graded_by = ? WHERE id = ?",
+            "UPDATE picks SET status = ?, stat_value = ?, note = ?, graded_at = ?, graded_by = ?, held_since = NULL "
+            "WHERE id = ?",
             (status, stat_value, note, graded_at, graded_by, pick_id),
         )
+
+    async def hold_pick(self, pick_id: int, stat_value: float | None, note: str, since: datetime) -> None:
+        """Start holding a miss for an injury ruling. A hold already running keeps its start time."""
+        await self._run(
+            "UPDATE picks SET stat_value = ?, note = ?, held_since = COALESCE(held_since, ?) "
+            "WHERE id = ? AND status = 'pending'",
+            (stat_value, note, iso(since), pick_id),
+        )
+
+    async def set_injury(self, pick_id: int, ruling: str | None) -> None:
+        """The commissioner's /injury ruling, or None to let ESPN decide."""
+        await self._run("UPDATE picks SET injury = ? WHERE id = ?", (ruling, pick_id))
 
     async def set_progress(self, pick_id: int, stat_value: float | None) -> None:
         """Where an unsettled leg stands mid-game, for /slip."""

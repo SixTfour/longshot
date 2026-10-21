@@ -76,6 +76,11 @@ SPECS: dict[str, Spec] = {
     "reminders": Spec("Reminders", "Hours before the deadline: `24, 7, 2`. Empty for none.", _reminders),
     "stake": Spec("Stake", "Dollars the loser owes: `10`", _positive(0.01, 100000, "The stake")),
     "cache_hours": Spec("Line cache", "Hours to reuse fetched lines: `12`", _positive(0.25, 72, "Cache hours")),
+    "injury_hold": Spec(
+        "Injury hold",
+        "Hours a miss waits for your `/injury` ruling when ESPN shows the player was hurt but came back: `2`",
+        _positive(0, 48, "The injury hold"),
+    ),
 }
 
 
@@ -141,6 +146,9 @@ class Settings:
 
     async def cache_hours(self) -> float:
         return float(await self.raw("cache_hours"))
+
+    async def injury_hold(self) -> float:
+        return float(await self.raw("injury_hold"))
 
     async def describe(self, key: str) -> str:
         """The current value, written for a person."""

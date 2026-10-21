@@ -65,6 +65,9 @@ def leg(pick: Pick) -> str:
     return f"{pick['label']} ({format_american(pick['price'])})"
 
 
+HELD = "missed, but the player got hurt · waiting on an injury ruling"
+
+
 def outcome(pick: Pick) -> str:
     """A short note on where a leg stands, or '' if there is nothing to add."""
     status, value = pick["status"], pick["stat_value"]
@@ -75,6 +78,8 @@ def outcome(pick: Pick) -> str:
         return "push"
     if status == REVIEW:
         return "needs a ruling"
+    if status == PENDING and pick.get("held_since"):
+        return HELD
     if value is None:
         return ""
     if pick["market"] == "totals":
@@ -189,6 +194,8 @@ def progress(pick: Pick, game: Game | None = None) -> str:
     status, value, line = pick["status"], pick["stat_value"], pick["line"]
     if status in (PUSH, VOID, REVIEW):
         return {PUSH: "push", REVIEW: "needs a ruling: `/grade`"}.get(status) or pick["note"] or "void"
+    if status == PENDING and pick.get("held_since"):
+        return f"🩹 {HELD}"
     if status == PENDING and not in_play(pick, game):
         return f"{kickoff_text(parse_iso(pick['kickoff']))} ET"
     if pick["market"] in ("h2h", "spreads"):
