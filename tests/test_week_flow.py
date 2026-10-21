@@ -3,13 +3,12 @@
 import asyncio
 import json
 import sys
-from datetime import timedelta
 
 import pytest
 from discord import app_commands
 from world import BENCHED, BUCS_GAME, DANIELS, IRVING, SEASON, TNF, WEEK, FakeInteraction, build, et, user
 
-from longshot import render, tracking
+from longshot import tracking
 from longshot.domain.cards import MAIN
 from longshot.domain.injuries import INJURED, NOT_INJURED, InjuryNote
 from longshot.domain.odds_math import parlay_decimal, total_return
@@ -488,12 +487,12 @@ def test_low_credits_stop_new_lookups_but_not_cached_ones(tmp_path, monkeypatch)
     play(tmp_path, monkeypatch, scenario)
 
 
-# --- The injury exemption -----------------------------------------------------------
+# --- Early Exit ---------------------------------------------------------------------
 # Bucky Irving ran for 165 yards, so 175+ misses and under 74.5 misses.
 
 IRVING_175 = (f"p:{IRVING}", "player_rush_yds", "over:174.5")
-HURT = InjuryNote("TB", "B.Irving", False)
-BACK = InjuryNote("TB", "B.Irving", True)
+HURT = InjuryNote("TB", "B.Irving", False, 3)
+BACK = InjuryNote("TB", "B.Irving", True, 4)
 
 
 async def rule_injury(world, member: int, ruling: str) -> str:
@@ -524,16 +523,17 @@ def injury_week(tmp_path, monkeypatch, check, *, leg=IRVING_175, notes=(), rulin
     play(tmp_path, monkeypatch, scenario)
 
 
-def test_a_player_who_leaves_injured_and_misses_voids_the_leg(tmp_path, monkeypatch):
+def test_an_early_exit_voids_a_miss(tmp_path, monkeypatch):
     async def check(world, at):
-        assert "➖ **Leg dropped**" in world.channel.texts[0] and "Injured during the game" in world.channel.texts[0]
+        assert "➖ **Leg dropped**" in world.channel.texts[0]
+        assert "Early Exit: left injured and did not return" in world.channel.texts[0]
         assert not any("dead" in text for text in world.channel.texts)
         assert (await world.statuses())[1] == "void"
 
     injury_week(tmp_path, monkeypatch, check, notes=[HURT])
 
 
-def test_an_under_is_not_voided_by_an_injury(tmp_path, monkeypatch):
+def test_an_under_is_not_voided_by_an_early_exit(tmp_path, monkeypatch):
     async def check(world, at):
         assert (await world.statuses())[1] == "lost"
         assert any("parlay is dead" in text for text in world.channel.texts)
@@ -544,42 +544,26 @@ def test_an_under_is_not_voided_by_an_injury(tmp_path, monkeypatch):
 def test_a_miss_with_no_injury_counts_at_once(tmp_path, monkeypatch):
     async def check(world, at):
         assert (await world.statuses())[1] == "lost"
-        assert 99 not in world.dms  # nothing to rule on
 
     injury_week(tmp_path, monkeypatch, check)
 
 
-def test_a_player_who_came_back_is_held_then_counts_as_a_miss(tmp_path, monkeypatch):
+def test_a_player_who_came_back_is_not_protected(tmp_path, monkeypatch):
     async def check(world, at):
-        # On hold: not a miss yet, and the commissioner is told how to rule.
-        assert (await world.statuses())[1] == "pending"
-        assert not any("dead" in text for text in world.channel.texts)
-        note = world.dms[99].last()
-        assert "Team 1's leg missed" in note and "came back" in note and "use `/injury` on Team 1 with **Injured**" in note
-        slip = await world.bot.db.member_pick(SEASON, WEEK, MAIN, 1)
-        assert "waiting on an injury ruling" in render.progress(slip)
-
-        await at(SUN_EARLY_DONE + timedelta(hours=1))
-        assert (await world.statuses())[1] == "pending"
-        assert len(world.dms[99].sent) == 1  # told once
-
-        await at(SUN_EARLY_DONE + timedelta(hours=2, minutes=1))
         assert (await world.statuses())[1] == "lost"
         assert any("parlay is dead" in text for text in world.channel.texts)
 
     injury_week(tmp_path, monkeypatch, check, notes=[HURT, BACK])
 
 
-def test_the_commissioner_voids_a_held_leg(tmp_path, monkeypatch):
+def test_the_commissioner_rules_an_early_exit_espn_missed(tmp_path, monkeypatch):
     async def check(world, at):
         world.channel.clear()
         reply = await rule_injury(world, 1, INJURED)
-        assert "is **void**: the player got hurt" in reply
+        assert "is **void**: an Early Exit" in reply
         assert (await world.statuses())[1] == "void"
-        assert "Leg dropped" in world.channel.texts[0] and "Injured during the game" in world.channel.texts[0]
-        # The hold running out later changes nothing.
-        await at(SUN_EARLY_DONE + timedelta(hours=3))
-        assert (await world.statuses())[1] == "void"
+        text = world.channel.texts[0]
+        assert "Leg dropped" in text and "Early Exit" in text and "alive again" in text
 
     injury_week(tmp_path, monkeypatch, check, notes=[HURT, BACK])
 

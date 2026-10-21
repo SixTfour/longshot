@@ -10,12 +10,12 @@ from __future__ import annotations
 
 import json
 import logging
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import TYPE_CHECKING, Any
 
 from . import render, slipboard
 from .clients.espn import EspnError, Game
-from .db import parse_iso, utcnow
+from .db import parse_iso
 from .domain.cards import card_title, split_week
 from .domain.grading import (
     DROPPED,
@@ -89,13 +89,13 @@ async def track(bot: Longshot, now: datetime, *, quiet: bool = False) -> None:
     """Grade and report everything live. quiet grades without posting, outside the regular season."""
     for season, week in await weeks_to_poll(bot, now):
         try:
-            await track_week(bot, season, week, quiet=quiet, now=now)
+            await track_week(bot, season, week, quiet=quiet)
         except EspnError as error:
             log.warning("Could not track Week %s: %s", week, error)
 
 
-async def _grade_game(bot: Longshot, game: Game, legs: list[Pick], now: datetime) -> list[tuple[Pick, Grade]]:
-    """Grade every pending leg on one game from live or final data, injury exemption included."""
+async def _grade_game(bot: Longshot, game: Game, legs: list[Pick]) -> list[tuple[Pick, Grade]]:
+    """Grade every pending leg on one game from live or final data, Early Exit included."""
     if game.called_off:
         note = "The game was postponed or cancelled. Settle with /grade."
         return [(leg, Grade(REVIEW, note=note)) for leg in legs]
@@ -103,7 +103,6 @@ async def _grade_game(bot: Longshot, game: Game, legs: list[Pick], now: datetime
     report = await bot.espn.report(game.espn_id) if any(leg["player_id"] for leg in legs) else None
     box = report.players if report else {}
     played: dict[str, bool] | None = None
-    hold = timedelta(hours=await bot.settings.injury_hold())
     results = []
     for leg in legs:
         if leg["player_id"] is None:
@@ -129,29 +128,16 @@ async def _grade_game(bot: Longshot, game: Game, legs: list[Pick], now: datetime
             if grade.status == LOST:
                 teams = [line.team] if line else [game.home.abbr, game.away.abbr]
                 espn = injury_status(report.injuries, leg["player_name"] or "", teams)
-                held = leg["held_since"]
-                hold_over = hold <= timedelta(0) or (held is not None and now - parse_iso(held) >= hold)
-                grade = apply_injury(grade, leg["side"], espn, leg["injury"], hold_over)
+                grade = apply_injury(grade, leg["side"], espn, leg["injury"])
         results.append((leg, grade))
     return results
 
 
-async def settle_legs(
-    bot: Longshot, game: Game, legs: list[Pick], *, now: datetime | None = None, notify: bool = False
-) -> list[int]:
-    """Grade pending legs on one game and store the outcome. Returns the ids of the legs now settled.
-
-    A miss held for an injury ruling stays pending. notify tells the commissioner when a hold starts.
-    """
-    now = now or utcnow()
+async def settle_legs(bot: Longshot, game: Game, legs: list[Pick]) -> list[int]:
+    """Grade pending legs on one game and store the outcome. Returns the ids of the legs now settled."""
     settled: list[int] = []
-    for leg, grade in await _grade_game(bot, game, legs, now):
-        if grade.status == PENDING and grade.note:
-            if leg["held_since"] is None:
-                await bot.db.hold_pick(leg["id"], grade.value, grade.note, now)
-                if notify:
-                    await _tell_of_hold(bot, leg, now)
-        elif grade.status == PENDING:
+    for leg, grade in await _grade_game(bot, game, legs):
+        if grade.status == PENDING:
             if grade.value != leg["stat_value"]:
                 await bot.db.set_progress(leg["id"], grade.value)
         else:
@@ -160,19 +146,7 @@ async def settle_legs(
     return settled
 
 
-async def _tell_of_hold(bot: Longshot, leg: Pick, now: datetime) -> None:
-    names = await bot.team_names()
-    until = now + timedelta(hours=await bot.settings.injury_hold())
-    await bot.tell_commissioner(
-        f"🩹 {render.team(leg['discord_id'], names)}'s leg missed: {render.leg(leg)}. ESPN shows "
-        f"{leg['player_name']} was hurt during the game but came back, so it is on hold. To void it, use `/injury` "
-        f"on {render.team(leg['discord_id'], names)} with **Injured**. Otherwise it counts as a miss {stamp(until, 'R')}."
-    )
-
-
-async def track_week(
-    bot: Longshot, season: int, week: int, *, quiet: bool = False, now: datetime | None = None
-) -> None:
+async def track_week(bot: Longshot, season: int, week: int, *, quiet: bool = False) -> None:
     """Fetch the week's live scores once, then grade and report each of its parlays."""
     schedule = await bot.nfl.games(season, week, fresh=True)
     games = {game.espn_id: game for game in schedule}
@@ -192,7 +166,7 @@ async def track_week(
             game = games.get(event_id)
             if game is None or (game.state == "pre" and not game.called_off):
                 continue
-            settled += await settle_legs(bot, game, legs, now=now, notify=not silent)
+            settled += await settle_legs(bot, game, legs)
 
         await announce_grades(bot, season, week, card, settled, quiet=silent)
         await post_slates(bot, season, week, card, card_games.get(card, []), quiet=silent)

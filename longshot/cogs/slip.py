@@ -38,8 +38,8 @@ WHICH = "That week has two parlays. Say which one with the `parlay` option."
 
 ESPN_DECIDES = "espn"
 RULINGS = [
-    app_commands.Choice(name="Injured: a miss is void", value=INJURED),
-    app_commands.Choice(name="Not injured: a miss counts, whatever ESPN shows", value=NOT_INJURED),
+    app_commands.Choice(name="Early Exit: left injured and did not return, a miss is void", value=INJURED),
+    app_commands.Choice(name="No Early Exit: a miss counts, whatever ESPN shows", value=NOT_INJURED),
     app_commands.Choice(name="Let ESPN decide (the default)", value=ESPN_DECIDES),
 ]
 
@@ -222,10 +222,10 @@ class Slip(commands.Cog):
         )
 
 
-    @app_commands.command(name="injury", description="Rule whether a player got hurt, for the injury exemption")
+    @app_commands.command(name="injury", description="Rule whether a player made an Early Exit (left injured and did not return)")
     @app_commands.describe(
         member="Whose leg it is",
-        status="Injured voids a miss. ESPN's play-by-play decides unless you rule.",
+        status="An Early Exit voids a miss. ESPN's play-by-play decides unless you rule.",
         week="The week. Leave empty for this week.",
         parlay="Only needed in Thanksgiving week, when there are two",
     )
@@ -273,7 +273,7 @@ class Slip(commands.Cog):
         game = games.get(pick["espn_event_id"])
         if game is not None and (game.state != "pre" or game.called_off):
             try:
-                settled = await tracking.settle_legs(self.bot, game, [await self.bot.db.pick(pick["id"])], now=utcnow())
+                settled = await tracking.settle_legs(self.bot, game, [await self.bot.db.pick(pick["id"])])
             except EspnError as error:
                 # Left pending: the tracker grades it on its next check.
                 log.warning("Could not regrade %s after an injury ruling: %s", game.label, error)
@@ -293,21 +293,19 @@ class Slip(commands.Cog):
         """What the ruling did to the leg, as the end of a sentence."""
         status = pick["status"]
         if status == VOID and pick["note"] == INJURED_NOTE:
-            return "is **void**: the player got hurt, so it drops out of the parlay."
-        if status == PENDING and pick["held_since"]:
-            return "missed, and ESPN shows the player was hurt but came back. It is on hold until the injury hold runs out."
+            return "is **void**: an Early Exit, so it drops out of the parlay."
         if status == PENDING:
             return {
-                INJURED: "is still being played. If it misses, it is void.",
+                INJURED: "is still being played. If it misses, it is void as an Early Exit.",
                 NOT_INJURED: "is still being played. If it misses, it counts as a miss, whatever ESPN shows.",
             }.get(ruling, "is still being played. ESPN's play-by-play decides whether a miss is void.")
         if status == WON:
-            return "hit, so it stands. The injury exemption only voids a miss."
+            return "hit, so it stands. Early Exit only voids a miss."
         if status == LOST and pick["side"] == "under":
-            return "went over, so it stays a miss. An under is never voided for an injury."
+            return "went over, so it stays a miss. Early Exit never voids an under."
         if status == LOST:
             return "counts as a **miss**." if ruling == NOT_INJURED else (
-                "counts as a **miss**: ESPN shows no injury that voids it. Rule it **Injured** to void it."
+                "counts as a **miss**: ESPN shows no Early Exit. Rule it an **Early Exit** to void it."
             )
         return f"is settled as **{status}**{f' ({note})' if (note := pick['note']) else ''}."
 

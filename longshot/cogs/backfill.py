@@ -44,11 +44,7 @@ _OUTCOME = {
     REVIEW: "I could not grade it. Settle it with `/grade`.",
     PENDING: "The game is still being played, so it will be graded when it ends.",
 }
-_HELD = (
-    "It missed, but ESPN shows the player was hurt during the game and came back, so it is on hold. "
-    "To void it, use `/injury` with **Injured**. Otherwise it counts as a miss when the injury hold runs out."
-)
-_INJURED = "It is **void** (the player got hurt during the game), so it drops out of the parlay."
+_INJURED = "It is **void** (an Early Exit: the player left injured and did not return), so it drops out of the parlay."
 
 
 def notice(text: str) -> list[Choice]:
@@ -229,7 +225,7 @@ class Backfill(commands.Cog):
                 f"({format_american(price)}) · {game.label}",
                 allowed_mentions=render.QUIET,
             )
-        settled = await tracking.settle_legs(bot, game, [entered], now=utcnow())
+        settled = await tracking.settle_legs(bot, game, [entered])
         await tracking.announce_grades(bot, *key, settled, quiet=silent)
         await slipboard.refresh(bot, *key)
         if silent:
@@ -243,8 +239,7 @@ class Backfill(commands.Cog):
             f"Recorded {target}'s {card_title(week, card)} pick: **{saved['label']}** "
             f"({format_american(price)}) · {game.label}. "
             + (
-                _HELD if saved["held_since"]
-                else _INJURED if saved["status"] == VOID and saved["note"] == INJURED_NOTE
+                _INJURED if saved["status"] == VOID and saved["note"] == INJURED_NOTE
                 else _OUTCOME[saved["status"]]
             )
             + (f" ({detail}.)" if detail and saved["status"] in (WON, LOST) else "")

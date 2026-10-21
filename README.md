@@ -108,13 +108,13 @@ Slates come from the real schedule: games that kick off within 90 minutes of eac
 | `/members` | Members | Which Sleeper team belongs to which Discord member. |
 | `/setup league_id channel` | Commissioner | Connect the Sleeper league and choose the channel. |
 | `/link member team`, `/unlink member` | Commissioner | Tie a Discord member to a Sleeper team. |
-| `/config [setting] [value]` | Commissioner | Show or change the deadlines, sportsbook, announcement time, reminders, stake, line cache and injury hold. |
+| `/config [setting] [value]` | Commissioner | Show or change the deadlines, sportsbook, announcement time, reminders, stake and line cache. |
 | `/pickfor member who bet line` | Commissioner | Enter or replace a member's pick, including after the deadline, on any of that parlay's games that has not kicked off. |
 | `/backfill member week game who bet odds [line]` | Commissioner | Record a pick after the fact, for a game that has already kicked off. See below. |
 | `/placed odds [parlay]` | Commissioner | Record that the parlay was placed, with the sportsbook's odds. |
 | `/paid member [week]` | Commissioner | Mark a stake as collected. |
 | `/grade member result [week] [parlay]` | Commissioner | Settle a leg by hand, or correct one. |
-| `/injury member status [week] [parlay]` | Commissioner | Rule whether a player got hurt: a miss by an injured player is void. See [Injuries](#injuries). |
+| `/injury member status [week] [parlay]` | Commissioner | Rule whether a player made an Early Exit. See [Early Exit](#early-exit). |
 | `/admin run step [week] [parlay]` | Commissioner | Run one step of the cycle now. |
 | `/admin loser member [week]` | Commissioner | Set who pays, for a tie or a correction. |
 | `/admin status` | Commissioner | How the bot is set up, this week's times, and Odds API credits left. |
@@ -151,26 +151,22 @@ Only bets the sportsbook feed lists can be picked. Two members cannot hold the s
 
 - A leg that lands exactly on its line is a push and drops out of the parlay.
 - A prop on a player who did not play is void and drops out.
-- A prop on a player who got hurt during the game is void if it misses. See below.
+- A prop on a player who left injured and did not return is void if it misses. See [Early Exit](#early-exit).
 - Counting stats (receptions, TDs, attempts, field goals) and game totals are settled the moment they pass the line. Yardage waits for the final whistle, because yardage can go down.
 - Anytime TD counts rushing, receiving, return and defensive touchdowns. A passing TD does not count for the passer.
 - If the bot cannot decide a leg it marks it ❓ and the commissioner settles it with `/grade`.
 
-### Injuries
+### Early Exit
 
-A player prop that misses because the player got hurt is void and drops out of the parlay. Longshot reads injuries from ESPN's play-by-play, which carries the NFL's own notes ("was injured during the play", "has returned to the game").
+Injuries follow DraftKings' full-game Early Exit (Early Exit+): if a player leaves the game injured, at any point including overtime, and does not return, a miss on their prop is void and drops out of the parlay. The rest of the parlay is worked out as if that leg was never in it.
 
-| ESPN shows the player | A miss is |
-|---|---|
-| Left injured and did not come back | Void, straight away. |
-| Hurt, but came back | Held for 2 hours, then a miss. The commissioner is messaged and can void it with `/injury` in that time. Until then the slip shows 🩹 and the parlay is not called dead. |
-| Not hurt | A miss, straight away. |
+- **Only a miss is voided.** A result already decided before the exit stands: an over already hit, a touchdown already scored.
+- **Unders are never voided.** An under only misses by going over, which an exit does not cause.
+- **A player who comes back gets no protection.** A miss counts as soon as the game ends.
 
-- **A hit stands.** Only a miss is voided.
-- **An under is never voided.** An under only misses by going over, which an injury does not cause.
-- **The commissioner's ruling outranks ESPN.** `/injury member status` takes **Injured** (a miss is void), **Not injured** (a miss counts, whatever ESPN shows) or **Let ESPN decide**. It works before the game ends or after the leg is graded, and the leg is graded again at once. A dead parlay comes back to life if its only miss is voided.
-- **`/grade` has the final word.** A leg settled by hand keeps that result; `/grade` with **Undo** lets the bot grade it again with the ruling.
-- The hold length is the **Injury hold** setting. `0` means no hold.
+Longshot reads exits from ESPN's play-by-play, which carries the NFL's own notes ("was injured during the play", "has returned to the game").
+
+The commissioner can overrule ESPN with `/injury member status`: **Early Exit** (a miss is void), **No Early Exit** (a miss counts, whatever ESPN shows) or **Let ESPN decide**. It works before the game ends or after the leg is graded, and the leg is graded again at once; a dead parlay comes back to life if its only miss is voided. A leg settled by hand with `/grade` keeps that result; `/grade` with **Undo** lets the bot grade it again with the ruling.
 
 ## Setting up
 
@@ -275,7 +271,6 @@ Change these with `/config`. They take effect without a restart.
 | Reminders | `24, 7, 2` | Hours before the deadline. |
 | Stake | `10` | What the lowest scorer owes. |
 | Line cache | `12` | Hours a fetched list of lines is reused. Lower for fresher prices, higher to save credits. |
-| Injury hold | `2` | Hours a miss waits for an `/injury` ruling when ESPN shows the player was hurt but came back. `0` for no hold. |
 
 ## Odds API credits
 

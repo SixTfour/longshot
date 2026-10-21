@@ -238,8 +238,11 @@ def parse_injuries(payload: dict[str, Any]) -> list[InjuryNote]:
     played = list(drives.get("previous") or [])
     if isinstance(drives.get("current"), dict):
         played.append(drives["current"])
-    texts = [play.get("text") or "" for drive in played for play in drive.get("plays") or []]
-    return parse_notes(texts)
+    return parse_notes(
+        ((play.get("period") or {}).get("number"), play.get("text") or "")
+        for drive in played
+        for play in drive.get("plays") or []
+    )
 
 
 def parse_team_roster(payload: dict[str, Any]) -> list[Athlete]:

@@ -1,4 +1,6 @@
-"""The injury exemption: a player prop that misses because the player got hurt is void.
+"""Early Exit, as DraftKings runs its full-game version (Early Exit+): a player
+prop is void if the player leaves injured at any point, overtime included, and
+does not return.
 
 ESPN's play-by-play carries the NFL gamebook's injury notes, which name a player
 the gamebook way, by team code and initial:
@@ -6,7 +8,8 @@ the gamebook way, by team code and initial:
     DAL-S.Revel was injured during the play.
     ** Injury Update: DAL-S.Revel has returned to the game.
 
-A player whose last note is "was injured" left the game and did not come back.
+A player whose last note is "was injured" left and did not come back. Someone
+who came back gets no protection.
 """
 
 from __future__ import annotations
@@ -18,9 +21,7 @@ from dataclasses import dataclass
 # Where the gamebook's team code differs from ESPN's abbreviation.
 GAMEBOOK_TEAMS = {"ARZ": "ARI", "BLT": "BAL", "CLV": "CLE", "HST": "HOU", "LA": "LAR", "WAS": "WSH"}
 
-# What ESPN's play-by-play says about a player.
-LEFT_INJURED = "left_injured"  # hurt, and never came back
-RETURNED = "returned"  # hurt at some point, but came back
+EARLY_EXIT = "early_exit"  # what ESPN shows: left injured and never came back
 
 # The commissioner's ruling with /injury, which outranks ESPN. None lets ESPN decide.
 INJURED = "injured"
@@ -38,13 +39,14 @@ class InjuryNote:
     team: str  # the gamebook's team code, as written
     name: str  # as written: 'S.Revel', 'Av.Terrell', 'A.St. Brown'
     returned: bool
+    quarter: int | None = None  # 5 and up is overtime
 
 
-def parse_notes(texts: Iterable[str]) -> list[InjuryNote]:
-    """Every injury note in some play texts, in order."""
+def parse_notes(plays: Iterable[tuple[int | None, str]]) -> list[InjuryNote]:
+    """Every injury note in some (quarter, play text) pairs, in order."""
     return [
-        InjuryNote(match.group(1), match.group(2), match.group(3).startswith("has returned"))
-        for text in texts
+        InjuryNote(match.group(1), match.group(2), match.group(3).startswith("has returned"), quarter)
+        for quarter, text in plays
         for match in _NOTE.finditer(text)
     ]
 
@@ -66,14 +68,14 @@ def _is_named(note_name: str, full_name: str) -> bool:
 
 
 def injury_status(notes: Iterable[InjuryNote], full_name: str, teams: Iterable[str]) -> str | None:
-    """LEFT_INJURED, RETURNED or None (no injury on record) for one player.
+    """EARLY_EXIT if ESPN shows the player left injured and never came back, else None.
 
     teams are the ESPN abbreviations the player could be on: their own team if
     known, otherwise both teams in the game.
     """
     allowed = set(teams)
-    status = None
+    last = None
     for note in notes:
         if GAMEBOOK_TEAMS.get(note.team, note.team) in allowed and _is_named(note.name, full_name):
-            status = RETURNED if note.returned else LEFT_INJURED
-    return status
+            last = note
+    return EARLY_EXIT if last is not None and not last.returned else None

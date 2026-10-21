@@ -5,14 +5,14 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
-from .injuries import INJURED, LEFT_INJURED, NOT_INJURED, RETURNED
+from .injuries import EARLY_EXIT, INJURED, NOT_INJURED
 from .markets import PropMarket, Stats
 
 PENDING = "pending"
 WON = "won"
 LOST = "lost"
 PUSH = "push"  # landed exactly on the line; the leg drops out of the parlay
-VOID = "void"  # the bet never had action (player did not play, or got hurt and missed); the leg drops out
+VOID = "void"  # the bet never had action (player did not play, or an Early Exit); the leg drops out
 REVIEW = "review"  # the bot could not decide; the commissioner settles it with /grade
 
 SETTLED = frozenset({WON, LOST, PUSH, VOID})
@@ -97,25 +97,22 @@ def grade_prop(
     return Grade(PENDING, value)
 
 
-INJURED_NOTE = "Injured during the game"
-HOLD_NOTE = "Missed, but the player was hurt during the game. Waiting on an /injury ruling."
+INJURED_NOTE = "Early Exit: left injured and did not return"
 
 
-def apply_injury(grade: Grade, side: str, espn: str | None, ruling: str | None, hold_over: bool) -> Grade:
-    """The injury exemption, for a player prop.
+def apply_injury(grade: Grade, side: str, espn: str | None, ruling: str | None) -> Grade:
+    """Early Exit, for a player prop, as DraftKings runs its full-game version.
 
-    A miss on an over or an anytime TD is void if the player got hurt: by the
-    commissioner's ruling, or else if ESPN shows they left injured and never
-    came back. If ESPN shows they were hurt but came back, the miss is held
-    (left pending) until hold_over, so the commissioner can rule. A hit stands,
-    and an under is never voided: going over is not something an injury causes.
+    A miss is void if the player left injured, at any point, and never came
+    back: by the commissioner's ruling, or else by ESPN's play-by-play. A
+    result decided before the injury stands, so a hit is never voided, and an
+    under is never voided: it only misses by going over, which an exit does not
+    cause.
     """
     if grade.status != LOST or side == "under" or ruling == NOT_INJURED:
         return grade
-    if ruling == INJURED or espn == LEFT_INJURED:
+    if ruling == INJURED or espn == EARLY_EXIT:
         return Grade(VOID, grade.value, INJURED_NOTE)
-    if espn == RETURNED and not hold_over:
-        return Grade(PENDING, grade.value, HOLD_NOTE)
     return grade
 
 

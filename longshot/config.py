@@ -24,7 +24,6 @@ SETTING_DEFAULTS = {
     "sportsbook": "draftkings",
     "stake": "10",
     "cache_hours": "12",
-    "injury_hold": "2",
 }
 
 
