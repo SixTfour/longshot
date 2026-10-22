@@ -12,6 +12,7 @@ from typing import Any
 
 import aiohttp
 
+from ..domain.injuries import InjuryNote, parse_notes
 from ..domain.markets import PICKABLE_POSITIONS
 
 SITE = "https://site.api.espn.com/apis/site/v2/sports/football/nfl"
@@ -125,6 +126,14 @@ class PlayerLine:
     stats: dict[str, float]
 
 
+@dataclass(frozen=True)
+class GameReport:
+    """What one game summary says: every player's stat line, and the injury notes from the play-by-play."""
+
+    players: dict[str, PlayerLine]
+    injuries: list[InjuryNote]
+
+
 def _number(text: Any) -> float | None:
     try:
         return float(text)
@@ -219,6 +228,23 @@ def parse_boxscore(payload: dict[str, Any]) -> dict[str, PlayerLine]:
     return players
 
 
+def parse_injuries(payload: dict[str, Any]) -> list[InjuryNote]:
+    """The play-by-play's injury notes, in the order they happened.
+
+    The summary's own 'injuries' section is not used: it is the teams' current
+    injury report, not a record of the game.
+    """
+    drives = payload.get("drives") or {}
+    played = list(drives.get("previous") or [])
+    if isinstance(drives.get("current"), dict):
+        played.append(drives["current"])
+    return parse_notes(
+        ((play.get("period") or {}).get("number"), play.get("text") or "")
+        for drive in played
+        for play in drive.get("plays") or []
+    )
+
+
 def parse_team_roster(payload: dict[str, Any]) -> list[Athlete]:
     """Players who could have a prop line: skill positions and kickers, not on IR or ruled out."""
     abbr = payload["team"]["abbreviation"]
@@ -260,8 +286,12 @@ class EspnClient:
         """The current season's calendar."""
         return parse_calendar(await self._get(f"{SITE}/scoreboard"))
 
+    async def report(self, event_id: str) -> GameReport:
+        payload = await self._get(f"{SITE}/summary", event=event_id)
+        return GameReport(parse_boxscore(payload), parse_injuries(payload))
+
     async def boxscore(self, event_id: str) -> dict[str, PlayerLine]:
-        return parse_boxscore(await self._get(f"{SITE}/summary", event=event_id))
+        return (await self.report(event_id)).players
 
     async def team_roster(self, team_id: str) -> list[Athlete]:
         return parse_team_roster(await self._get(f"{SITE}/teams/{team_id}/roster"))

@@ -90,6 +90,7 @@ CREATE TABLE IF NOT EXISTS picks (
     note          TEXT,
     graded_at     TEXT,
     graded_by     TEXT,
+    injury        TEXT,  -- the commissioner's Early Exit ruling: 'injured', 'not_injured', or NULL for ESPN
     entered_by    INTEGER NOT NULL,
     created_at    TEXT NOT NULL,
     UNIQUE (season, week, card, discord_id)
@@ -357,6 +358,10 @@ class Database:
             "UPDATE picks SET status = ?, stat_value = ?, note = ?, graded_at = ?, graded_by = ? WHERE id = ?",
             (status, stat_value, note, graded_at, graded_by, pick_id),
         )
+
+    async def set_injury(self, pick_id: int, ruling: str | None) -> None:
+        """The commissioner's /injury ruling, or None to let ESPN decide."""
+        await self._run("UPDATE picks SET injury = ? WHERE id = ?", (ruling, pick_id))
 
     async def set_progress(self, pick_id: int, stat_value: float | None) -> None:
         """Where an unsettled leg stands mid-game, for /slip."""

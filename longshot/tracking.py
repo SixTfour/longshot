@@ -26,9 +26,11 @@ from .domain.grading import (
     VOID,
     WON,
     Grade,
+    apply_injury,
     grade_prop,
     grade_team_bet,
 )
+from .domain.injuries import injury_status
 from .domain.markets import PROP_MARKETS
 from .domain.schedule import stamp
 from .domain.slates import Slate, build_slates
@@ -93,12 +95,13 @@ async def track(bot: Longshot, now: datetime, *, quiet: bool = False) -> None:
 
 
 async def _grade_game(bot: Longshot, game: Game, legs: list[Pick]) -> list[tuple[Pick, Grade]]:
-    """Grade every pending leg on one game from live or final data."""
+    """Grade every pending leg on one game from live or final data, Early Exit included."""
     if game.called_off:
         note = "The game was postponed or cancelled. Settle with /grade."
         return [(leg, Grade(REVIEW, note=note)) for leg in legs]
 
-    box = await bot.espn.boxscore(game.espn_id) if any(leg["player_id"] for leg in legs) else {}
+    report = await bot.espn.report(game.espn_id) if any(leg["player_id"] for leg in legs) else None
+    box = report.players if report else {}
     played: dict[str, bool] | None = None
     results = []
     for leg in legs:
@@ -122,6 +125,10 @@ async def _grade_game(bot: Longshot, game: Game, legs: list[Pick]) -> list[tuple
                 PROP_MARKETS[leg["market"]], leg["side"], leg["line"], line.stats if line else None,
                 game.final, was_active,
             )
+            if grade.status == LOST:
+                teams = [line.team] if line else [game.home.abbr, game.away.abbr]
+                espn = injury_status(report.injuries, leg["player_name"] or "", teams)
+                grade = apply_injury(grade, leg["side"], espn, leg["injury"])
         results.append((leg, grade))
     return results
 
@@ -152,6 +159,8 @@ async def track_week(bot: Longshot, season: int, week: int, *, quiet: bool = Fal
             if pick["status"] == PENDING:
                 by_game.setdefault(pick["espn_event_id"], []).append(pick)
 
+        # A parlay entered after the fact with /backfill is never posted about.
+        silent = quiet or bool(row["backfilled"])
         settled: list[int] = []
         for event_id, legs in by_game.items():
             game = games.get(event_id)
@@ -159,8 +168,6 @@ async def track_week(bot: Longshot, season: int, week: int, *, quiet: bool = Fal
                 continue
             settled += await settle_legs(bot, game, legs)
 
-        # A parlay entered after the fact with /backfill is never posted about.
-        silent = quiet or bool(row["backfilled"])
         await announce_grades(bot, season, week, card, settled, quiet=silent)
         await post_slates(bot, season, week, card, card_games.get(card, []), quiet=silent)
         if not silent:

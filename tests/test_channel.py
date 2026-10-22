@@ -80,6 +80,6 @@ def test_a_command_used_elsewhere_is_turned_away_privately(tmp_path):
 def test_every_command_goes_through_the_check(tmp_path):
     async def scenario(bot):
         assert type(bot.tree).__name__ == "LeagueTree"
-        assert len(bot.tree.get_commands()) == 17
+        assert len(bot.tree.get_commands()) == 18
 
     with_bot(tmp_path, scenario)

@@ -18,6 +18,7 @@ from longshot.bot import Longshot
 from longshot.clients.espn import (
     Athlete,
     Game,
+    GameReport,
     Scoreboard,
     SeasonCalendar,
     Team,
@@ -70,6 +71,7 @@ class FakeEspn:
         self.team_game, self.bucs_game = FEATURED[week]
         self.games = week_games(week)
         self.box = parse_boxscore(load("espn_summary_401872980.json"))
+        self.injuries = []  # injury notes in the Buccaneers game's play-by-play
         self.requests = 0
 
     def set(self, label: str, *, state: str, home: int = 0, away: int = 0, status: str | None = None) -> None:
@@ -94,9 +96,14 @@ class FakeEspn:
         """ESPN's real 2026 calendar, so the season starts and ends on the real dates."""
         return parse_calendar(load("espn_calendar_2026.json"))
 
-    async def boxscore(self, event_id: str):
+    async def report(self, event_id: str) -> GameReport:
         game = next(g for g in self.games.values() if g.espn_id == event_id)
-        return self.box if game.label == self.bucs_game and game.state != "pre" else {}
+        if game.label == self.bucs_game and game.state != "pre":
+            return GameReport(self.box, list(self.injuries))
+        return GameReport({}, [])
+
+    async def boxscore(self, event_id: str):
+        return (await self.report(event_id)).players
 
     async def team_roster(self, team_id: str) -> list[Athlete]:
         if team_id == "TB":

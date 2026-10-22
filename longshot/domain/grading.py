@@ -5,13 +5,14 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass
 
+from .injuries import EARLY_EXIT, INJURED, NOT_INJURED
 from .markets import PropMarket, Stats
 
 PENDING = "pending"
 WON = "won"
 LOST = "lost"
 PUSH = "push"  # landed exactly on the line; the leg drops out of the parlay
-VOID = "void"  # the bet never had action (player did not play); the leg drops out
+VOID = "void"  # the bet never had action (player did not play, or an Early Exit); the leg drops out
 REVIEW = "review"  # the bot could not decide; the commissioner settles it with /grade
 
 SETTLED = frozenset({WON, LOST, PUSH, VOID})
@@ -94,6 +95,25 @@ def grade_prop(
     if prop.monotonic and value > line:
         return Grade(WON if side == "over" else LOST, value)
     return Grade(PENDING, value)
+
+
+INJURED_NOTE = "Early Exit: left injured and did not return"
+
+
+def apply_injury(grade: Grade, side: str, espn: str | None, ruling: str | None) -> Grade:
+    """Early Exit, for a player prop, as DraftKings runs its full-game version.
+
+    A miss is void if the player left injured, at any point, and never came
+    back: by the commissioner's ruling, or else by ESPN's play-by-play. A
+    result decided before the injury stands, so a hit is never voided, and an
+    under is never voided: it only misses by going over, which an exit does not
+    cause.
+    """
+    if grade.status != LOST or side == "under" or ruling == NOT_INJURED:
+        return grade
+    if ruling == INJURED or espn == EARLY_EXIT:
+        return Grade(VOID, grade.value, INJURED_NOTE)
+    return grade
 
 
 def parlay_status(statuses: Iterable[str]) -> str:

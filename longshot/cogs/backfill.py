@@ -21,7 +21,7 @@ from ..bot import Longshot, commissioner_only
 from ..clients.espn import Athlete, EspnError, Game
 from ..db import iso, utcnow
 from ..domain.cards import card_title, split_week
-from ..domain.grading import LOST, PENDING, PUSH, REVIEW, VOID, WON
+from ..domain.grading import INJURED_NOTE, LOST, PENDING, PUSH, REVIEW, VOID, WON
 from ..domain.lines import pick_label, typed_line
 from ..domain.markets import PROP_MARKETS
 from ..domain.odds_math import format_american, parse_american
@@ -44,6 +44,7 @@ _OUTCOME = {
     REVIEW: "I could not grade it. Settle it with `/grade`.",
     PENDING: "The game is still being played, so it will be graded when it ends.",
 }
+_INJURED = "It is **void** (an Early Exit: the player left injured and did not return), so it drops out of the parlay."
 
 
 def notice(text: str) -> list[Choice]:
@@ -236,7 +237,11 @@ class Backfill(commands.Cog):
         detail = render.outcome(saved)
         return (
             f"Recorded {target}'s {card_title(week, card)} pick: **{saved['label']}** "
-            f"({format_american(price)}) · {game.label}. {_OUTCOME[saved['status']]}"
+            f"({format_american(price)}) · {game.label}. "
+            + (
+                _INJURED if saved["status"] == VOID and saved["note"] == INJURED_NOTE
+                else _OUTCOME[saved["status"]]
+            )
             + (f" ({detail}.)" if detail and saved["status"] in (WON, LOST) else "")
             + (" It replaces the pick they had." if replaced else "")
             + (" Nothing was posted in the channel." if silent else "")
