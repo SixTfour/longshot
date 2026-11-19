@@ -70,7 +70,6 @@ async def announce(bot: Longshot, plan: WeekPlan, now: datetime, *, force: bool 
             old_deadline = row["deadline_at"]
             if (
                 row["announced_at"]
-                and row["skipped"]
                 and old_deadline
                 and parse_iso(old_deadline).year < 2000
                 and now < parlay.times.deadline_at
