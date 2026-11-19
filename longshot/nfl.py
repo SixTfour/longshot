@@ -126,7 +126,15 @@ class Nfl:
         games = await self.games(season, week)
         if not games:
             return None
-        first_kickoff = min((game.kickoff for game in games if game.time_set), default=games[0].kickoff)
+        # ESPN gives games without a scheduled kickoff a placeholder date (often
+        # 1993-01-31). Never anchor the announcement/deadline cycle to that date.
+        # Wait until at least one real kickoff is available; later games can
+        # remain TBD because the earliest confirmed kickoff still anchors the week.
+        timed_games = [game for game in games if game.time_set]
+        if not timed_games:
+            log.info("Week %s of %s has no confirmed kickoff times yet", week, season)
+            return None
+        first_kickoff = min(game.kickoff for game in timed_games)
         announce, reminders = await self._settings.announce(), await self._settings.reminders()
         parlays = []
         for card, card_games in split_week(games).items():

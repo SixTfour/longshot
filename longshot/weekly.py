@@ -61,7 +61,30 @@ async def announce(bot: Longshot, plan: WeekPlan, now: datetime, *, force: bool 
     season, week = plan.season, plan.week
     rows = {parlay.card: await bot.db.ensure_parlay(*parlay.key) for parlay in plan.parlays}
     if rows[MAIN]["announced_at"] and not force:
-        return False
+        # Older versions could anchor a week to ESPN's 1993 placeholder when
+        # every kickoff was TBD. If that made the announcement mark the week
+        # skipped, and no one picked, reopen it once a real schedule is present.
+        reopened = False
+        for parlay in plan.parlays:
+            row = rows[parlay.card]
+            old_deadline = row["deadline_at"]
+            if (
+                row["announced_at"]
+                and row["skipped"]
+                and old_deadline
+                and parse_iso(old_deadline).year < 2000
+                and now < parlay.times.deadline_at
+                and not await bot.db.parlay_picks(*parlay.key)
+            ):
+                log.warning("Reopening %s after an ESPN placeholder deadline", parlay.title)
+                await bot.db.update_parlay(
+                    *parlay.key, announced_at=None, closed_at=None, deadline_at=None, skipped=0,
+                    recap_at=None, result=None, payout=None,
+                )
+                rows[parlay.card] = await bot.db.parlay(*parlay.key)
+                reopened = True
+        if not reopened:
+            return False
     league_id, channel = await bot.league_id(), await bot.league_channel()
     if league_id is None or channel is None:
         return False
